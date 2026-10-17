@@ -1,0 +1,16 @@
+﻿**/Debug/
+**/Release/
+**/.vs/
+*.user
+*.suo
+*.pdb
+*.ilk
+*.obj
+*.exe
+*.dll
+*.lib
+*.exp
+valve/
+cstrike/
+sourcesurge_gs/dlls/
+sourcesurge_gs/cl_dlls/
