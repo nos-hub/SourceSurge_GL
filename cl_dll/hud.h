@@ -490,6 +490,8 @@ private:
 #include "hud_points.h"
 #include "hud_wavemode.h"
 #include "hud_grapplecharge.h"
+#include "hud_meleecharges.h"
+#include "hud_scope.h"
 
 class CHud
 {
@@ -504,6 +506,7 @@ private:
 	int m_iConcussionEffect;
 
 public:
+	CHudScope m_Scope;
 	HSPRITE m_hsprCursor;
 	float m_flTime;		  // the current client time
 	float m_fOldTime;	  // the time at which the HUD was last redrawn
@@ -590,6 +593,7 @@ public:
 	CHudEditor* m_Editor;
 	CHudWaveMode m_WaveMode;
 	CHudGrappleCharge m_GrappleCharge;
+	CHudMeleeCharges m_MeleeCharges;
 
 	void Init();
 	void VidInit();

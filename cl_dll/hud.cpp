@@ -362,7 +362,8 @@ void CHud::Init()
 
 	// In case we get messages before the first update -- time will be valid
 	m_flTime = 1.0;
-
+	
+	m_Scope.Init();
 	m_Ammo.Init();
 	m_Health.Init();
 	m_SayText.Init();
@@ -383,7 +384,8 @@ void CHud::Init()
 	m_Editor = new CHudEditor();
 	m_WaveMode.Init();
 	m_GrappleCharge.Init();
-
+	m_MeleeCharges.Init();
+	
     // === HUD Editor Registration ===
     // Register the console command
     gEngfuncs.pfnAddCommand("hud_edit", CmdHudEdit);
@@ -400,6 +402,8 @@ void CHud::Init()
 	m_Editor->Add(HUD_POINTS_POPUP,		 "KillPopup",		  0.46f, 0.38f, 160, 36);
 	m_Editor->Add(HUD_WAVE_ENEMIES,		 "Enemies",			  0.50f, 0.50f, 100, 20);
 	m_Editor->Add(HUD_GRAPPLE_CHARGE,    "GrappleCharge",     0.43f, 0.60f, 140, 24);
+	m_Editor->Add(HUD_TECH_POPUP,		 "TechPopup",		  0.46f, 0.66f, 160, 32);
+	m_Editor->Add(HUD_MELEE_CHARGES,	 "MeleeCharges",	  0.43f, 0.66f, 110, 28);
 
     // Load saved layout
     m_Editor->SetProfile("default");
@@ -462,6 +466,8 @@ void CHud::VidInit()
 	m_WaveMode.VidInit();
 	m_Points.VidInit();
 	m_GrappleCharge.VidInit();
+	m_MeleeCharges.VidInit();
+	m_Scope.VidInit();
 
 	m_scrinfo.iSize = sizeof(m_scrinfo);
 	GetScreenInfo(&m_scrinfo);

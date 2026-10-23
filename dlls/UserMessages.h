@@ -60,3 +60,8 @@ void LinkUserMessages();
 extern int gmsgWaveState; //waves 
 
 extern int gmsgGrappleCharge;
+
+extern int gmsgTechPts;
+extern int gmsgMeleeCharges;
+extern int gmsgSniperScope;
+

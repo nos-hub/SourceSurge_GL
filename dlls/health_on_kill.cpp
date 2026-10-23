@@ -2,6 +2,7 @@
 //
 // pev->health is the only health value. Anything above 100 is overheal.
 // Damage hits pev->health directly, so it comes off overheal first, as in TF2.
+// Overheal drains faster the more of it you have: 1 HP/s for a tiny bit, up to 4 HP/s at the 250 cap.
 //
 // Healing scales with the points of THAT kill, with diminishing returns so style
 // multipliers can't refill you instantly:
@@ -22,7 +23,8 @@ constexpr float HEALTH_EXPONENT = 0.5f;			 // 1.0 = linear (busted with style mu
 constexpr float HEALTH_MAX_PER_KILL = 60.0f;	 // hard cap on the heal from a single kill
 constexpr float HEALTH_MAX_NORMAL = 100.0f;		 // normal max health
 constexpr float HEALTH_MAX_OVERHEAL = 250.0f;	 // absolute cap including overheal
-constexpr float OVERHEAL_DECAY_RATE = 1.0f;		 // overheal lost per second
+constexpr float OVERHEAL_DECAY_MIN = 1.0f;		 // overheal lost per second when you only have a tiny bit of overheal
+constexpr float OVERHEAL_DECAY_MAX = 4.0f;		 // overheal lost per second at the full overheal cap (HEALTH_MAX_OVERHEAL)
 
 void HealthOnKill_Grant(CBasePlayer* pPlayer, float flPoints)
 {
@@ -49,7 +51,18 @@ void HealthOnKill_DecayOverheal(CBasePlayer* pPlayer)
 
 	if (pev->health > HEALTH_MAX_NORMAL)
 	{
-		pev->health -= OVERHEAL_DECAY_RATE * gpGlobals->frametime;
+		// how full the overheal is: 0 = just above 100 HP, 1 = at the 250 HP cap
+		const float flOverheal = pev->health - HEALTH_MAX_NORMAL;
+		const float flMaxOverheal = HEALTH_MAX_OVERHEAL - HEALTH_MAX_NORMAL;
+
+		float flFrac = (flMaxOverheal > 0.0f) ? (flOverheal / flMaxOverheal) : 0.0f;
+		if (flFrac > 1.0f)
+			flFrac = 1.0f;
+
+		// linear: 1 HP/s with a little overheal ... 4 HP/s with the maximum
+		const float flRate = OVERHEAL_DECAY_MIN + (OVERHEAL_DECAY_MAX - OVERHEAL_DECAY_MIN) * flFrac;
+
+		pev->health -= flRate * gpGlobals->frametime;
 		if (pev->health < HEALTH_MAX_NORMAL)
 			pev->health = HEALTH_MAX_NORMAL;
 	}

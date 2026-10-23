@@ -21,9 +21,14 @@
 #include "player.h"
 #include "gamerules.h"
 
+#ifndef CLIENT_DLL
+#include "melee_kb.h"
+#endif
+
 
 #define CROWBAR_BODYHIT_VOLUME 128
 #define CROWBAR_WALLHIT_VOLUME 512
+#define CROWBAR_RANGE 72 
 
 LINK_ENTITY_TO_CLASS(weapon_crowbar, CCrowbar);
 
@@ -157,7 +162,7 @@ bool CCrowbar::Swing(bool fFirst)
 
 	UTIL_MakeVectors(m_pPlayer->pev->v_angle);
 	Vector vecSrc = m_pPlayer->GetGunPosition();
-	Vector vecEnd = vecSrc + gpGlobals->v_forward * 32;
+	Vector vecEnd = vecSrc + gpGlobals->v_forward * CROWBAR_RANGE;
 
 	UTIL_TraceLine(vecSrc, vecEnd, dont_ignore_monsters, ENT(m_pPlayer->pev), &tr);
 
@@ -216,6 +221,7 @@ bool CCrowbar::Swing(bool fFirst)
 
 #ifndef CLIENT_DLL
 
+
 		// hit
 		fDidHit = true;
 		CBaseEntity* pEntity = CBaseEntity::Instance(tr.pHit);
@@ -235,6 +241,7 @@ bool CCrowbar::Swing(bool fFirst)
 			pEntity->TraceAttack(m_pPlayer->pev, gSkillData.plrDmgCrowbar / 2, gpGlobals->v_forward, &tr, DMG_CLUB);
 		}
 		ApplyMultiDamage(m_pPlayer->pev, m_pPlayer->pev);
+		MeleeKB_OnMeleeHit(m_pPlayer, tr.vecPlaneNormal, pEntity);
 
 #endif
 

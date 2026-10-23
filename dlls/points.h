@@ -22,3 +22,6 @@ void Points_Sync(CBasePlayer* pPlayer);
 // Per-frame tracking for the style bonuses (bhop chain, 360 spins, flicks,
 // weapon switches...). Called from Wave_Think(), which already runs every frame.
 void Points_Think();
+
+// Add movement-tech points to the player's total and tell the HUD (name + points under it).
+void Points_AddTech(CBasePlayer* pPlayer, int techId, int points);

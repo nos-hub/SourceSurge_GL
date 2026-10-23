@@ -125,7 +125,7 @@ float CHalfLifeRules::FlPlayerFallDamage(CBasePlayer* pPlayer)
 void CHalfLifeRules::PlayerSpawn(CBasePlayer* pPlayer)
 {
 	pPlayer->pev->weapons |= (1 << WEAPON_SUIT);
-	pPlayer->GiveNamedItem("weapon_grapple");   // ADD (temporary, for testing)
+	pPlayer->GiveNamedItem("weapon_grapple");
 }
 
 //=========================================================

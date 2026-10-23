@@ -16,6 +16,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include "movement_tech.h"
 
 // ---------------- tunables ----------------
 constexpr float JS_MIN_DISPLAY_DISTANCE = 100.0f; // shorter jumps are not reported
@@ -484,6 +485,8 @@ static void FinishJump(CBasePlayer* p, JsState& st, const JsFrame& land, float n
 // ---------------- hooks ----------------
 void JumpStats_PreThink(CBasePlayer* p)
 {
+	MoveTech_PreThink(p);
+
 	JsState& st = GetState(p);
 	entvars_t* pev = p->pev;
 	const float now = gpGlobals->time;

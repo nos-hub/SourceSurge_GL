@@ -587,7 +587,6 @@ Killed
 */
 void CBaseMonster::Killed(entvars_t* pevAttacker, int iGib)
 {
-	ALERT(at_console, "[points] CBaseMonster::Killed %s\n", STRING(pev->classname));
 	unsigned int cCount = 0;
 	bool fDone = false;
 

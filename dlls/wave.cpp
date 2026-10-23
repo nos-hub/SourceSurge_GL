@@ -62,6 +62,16 @@
 
 #define WAVE_MAX_PLAYERS 32
 
+// item drops from wave grunts (hand grenades, SMG grenades, rockets)
+#define WAVE_MAX_DROPS 16			// pickups kept on the map at once (the oldest vanishes first)
+#define WAVE_DROP_LIFETIME 45.0f	// seconds before an uncollected drop disappears
+#define WAVE_DROP_BASE_CHANCE 0.10f // chance at 100 points (x1.0); scales linearly with the points of the kill
+#define WAVE_DROP_MAX_CHANCE 0.85f	// the chance never goes above this
+#define WAVE_DROP_W_NADE 45			// weights: which item drops once a drop happens
+#define WAVE_DROP_W_SMG 35
+#define WAVE_DROP_W_ROCKET 20
+#define WAVE_DROP_NADE_COUNT 2 // hand grenades inside a dropped grenade pickup
+
 // session state. 0-4 are also what the client HUD understands.
 enum
 {
@@ -126,6 +136,10 @@ struct wave_state_t
 
 	bool used[WAVE_MAX_ALIVE];
 	EHANDLE hEnemy[WAVE_MAX_ALIVE];
+
+	// dropped pickups, tracked so they can be cleaned up
+	EHANDLE hDrop[WAVE_MAX_DROPS];
+	float dropTime[WAVE_MAX_DROPS];
 };
 
 static wave_state_t g_Wave;
@@ -140,7 +154,7 @@ static float g_WaveLastTime = 0.0f; // detects a new level (time restarts)
 static bool g_WaveAutoArmed = true; // may auto-open the lobby on this level
 static int g_WavePendingDiff = -1;	// >=0: start this difficulty after a retry reload
 
-static cvar_t g_cvWaveAuto = {"ss_wave_auto", "0", FCVAR_SERVER};
+static cvar_t g_cvWaveAuto = {"ss_wave_auto", "1", FCVAR_SERVER}; // default: open the lobby on every map load
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -460,8 +474,105 @@ static void Wave_Send(bool force)
 // enemies
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// item drops
+// ---------------------------------------------------------------------------
+
+static void Wave_ClearDrops(bool removeThem)
+{
+	for (int i = 0; i < WAVE_MAX_DROPS; i++)
+	{
+		if (removeThem)
+		{
+			CBaseEntity* pEnt = g_Wave.hDrop[i];
+			if (pEnt)
+				UTIL_Remove(pEnt);
+		}
+		g_Wave.hDrop[i] = NULL;
+		g_Wave.dropTime[i] = 0.0f;
+	}
+}
+
+// removes drops that have been lying around too long (picked-up ones are already gone)
+static void Wave_UpdateDrops()
+{
+	const float now = gpGlobals->time;
+	for (int i = 0; i < WAVE_MAX_DROPS; i++)
+	{
+		CBaseEntity* pEnt = g_Wave.hDrop[i];
+		if (!pEnt)
+			continue;
+		if (now - g_Wave.dropTime[i] > WAVE_DROP_LIFETIME)
+		{
+			UTIL_Remove(pEnt);
+			g_Wave.hDrop[i] = NULL;
+		}
+	}
+}
+
+// creates one weighted-random pickup at the given position
+static void Wave_SpawnDrop(const Vector& origin)
+{
+	const int totalWeight = WAVE_DROP_W_NADE + WAVE_DROP_W_SMG + WAVE_DROP_W_ROCKET;
+	const int roll = RANDOM_LONG(0, totalWeight - 1);
+
+	const char* classname = "ammo_rpgclip"; // rockets
+	bool isGrenade = false;
+	if (roll < WAVE_DROP_W_NADE)
+	{
+		classname = "weapon_handgrenade";
+		isGrenade = true;
+	}
+	else if (roll < WAVE_DROP_W_NADE + WAVE_DROP_W_SMG)
+	{
+		classname = "ammo_ARgrenades"; // MP5 / SMG grenades
+	}
+
+	CBaseEntity* pItem = CBaseEntity::Create(classname, origin, Vector(0, RANDOM_FLOAT(0.0f, 360.0f), 0), NULL);
+	if (!pItem)
+		return;
+
+	// multiplayer rules respawn ammo/weapons at the same spot after pickup unless
+	// this flag is set (it is read at pickup time, so setting it now is fine)
+	pItem->pev->spawnflags |= SF_NORESPAWN;
+
+	// a dropped hand-grenade weapon gives its default ammo (5): lower it
+	if (isGrenade)
+		static_cast<CBasePlayerWeapon*>(pItem)->m_iDefaultAmmo = WAVE_DROP_NADE_COUNT;
+
+	// small toss so drops from a squad do not stack on one spot
+	pItem->pev->velocity = Vector(RANDOM_FLOAT(-70.0f, 70.0f), RANDOM_FLOAT(-70.0f, 70.0f), RANDOM_FLOAT(110.0f, 180.0f));
+
+	// remember it: reuse an empty slot, otherwise replace the oldest drop
+	int slot = -1;
+	float oldest = 1.0e30f;
+	for (int i = 0; i < WAVE_MAX_DROPS; i++)
+	{
+		CBaseEntity* pOld = g_Wave.hDrop[i];
+		if (!pOld)
+		{
+			slot = i;
+			break;
+		}
+		if (g_Wave.dropTime[i] < oldest)
+		{
+			oldest = g_Wave.dropTime[i];
+			slot = i;
+		}
+	}
+
+	CBaseEntity* pReplaced = g_Wave.hDrop[slot];
+	if (pReplaced)
+		UTIL_Remove(pReplaced);
+
+	g_Wave.hDrop[slot] = pItem;
+	g_Wave.dropTime[slot] = gpGlobals->time;
+}
+
 static void Wave_ClearEnemies(bool removeAlive)
 {
+	Wave_ClearDrops(removeAlive);
+
 	for (int i = 0; i < WAVE_MAX_ALIVE; i++)
 	{
 		if (g_Wave.used[i] && removeAlive)
@@ -673,6 +784,39 @@ static void Wave_AlertEnemies()
 		pMon->m_vecEnemyLKP = pTarget->pev->origin;
 		pMon->SetConditions(bits_COND_NEW_ENEMY);
 	}
+}
+
+// Called by the points system after a player's kill is scored. Only wave
+// grunts drop things. The chance grows with the points that kill was worth:
+//   chance = WAVE_DROP_BASE_CHANCE x (points / 100), capped at WAVE_DROP_MAX_CHANCE
+//   100 pts -> 10%   150 pts -> 15%   242 pts -> 24%   400 pts -> 40%   850+ pts -> 85%
+void Wave_OnPlayerKill(CBaseEntity* pVictim, int pointsGained)
+{
+	if (!pVictim || g_Wave.state != WAVE_NET_ACTIVE)
+		return;
+
+	// is the victim one of our tracked grunts? (it is flagged dead only next frame, so the slot is still used)
+	bool isWaveGrunt = false;
+	for (int i = 0; i < WAVE_MAX_ALIVE; i++)
+	{
+		if (!g_Wave.used[i])
+			continue;
+		CBaseEntity* pEnt = g_Wave.hEnemy[i];
+		if (pEnt && pEnt->pev == pVictim->pev)
+		{
+			isWaveGrunt = true;
+			break;
+		}
+	}
+	if (!isWaveGrunt)
+		return;
+
+	float chance = WAVE_DROP_BASE_CHANCE * ((float)pointsGained / 100.0f);
+	if (chance > WAVE_DROP_MAX_CHANCE)
+		chance = WAVE_DROP_MAX_CHANCE;
+
+	if (RANDOM_FLOAT(0.0f, 1.0f) < chance)
+		Wave_SpawnDrop(pVictim->pev->origin + Vector(0, 0, 24));
 }
 
 float Wave_DamageScale(entvars_t* pevAttacker)
@@ -927,9 +1071,48 @@ bool Wave_IsActive()
 	return g_Wave.locked;
 }
 
+// Every frame: living players always have the HEV suit (single-player rules do not give it, and
+// without it the client HUD hides weapons and ammo). While sv_allweapons is on it also prints a
+// status line every 3 seconds, so you can see what the server thinks the player owns.
+static void Wave_SuitAndStatus()
+{
+	static float s_flNextStatus = 0.0f;
+
+	const bool report = gpGlobals->time >= s_flNextStatus || s_flNextStatus > gpGlobals->time + 5.0f;
+	if (report)
+		s_flNextStatus = gpGlobals->time + 3.0f;
+
+	const bool allWeapons = CVAR_GET_FLOAT("sv_allweapons") > 0;
+
+	for (int i = 1; i <= gpGlobals->maxClients; i++)
+	{
+		CBaseEntity* pEnt = UTIL_PlayerByIndex(i);
+		if (!Wave_IsConnected(pEnt) || !pEnt->IsAlive())
+			continue;
+
+		CBasePlayer* pPlayer = (CBasePlayer*)pEnt;
+
+		if (!pPlayer->HasSuit())
+			pPlayer->SetHasSuit(true);
+
+		if (report && allWeapons)
+		{
+			int weapons = 0;
+			for (int slot = 0; slot < MAX_ITEM_TYPES; slot++)
+			{
+				for (CBasePlayerItem* pItem = pPlayer->m_rgpPlayerItems[slot]; pItem; pItem = pItem->m_pNext)
+					weapons++;
+			}
+			ALERT(at_console, " ",
+				i, pPlayer->HasSuit() ? 1 : 0, weapons);
+		}
+	}
+}
+
 void Wave_Think()
 {
 	// style-bonus tracking (bhop chain, 360 spins, flicks...) runs every frame
+	Wave_SuitAndStatus();
 	Points_Think();
 
 	const float t = gpGlobals->time;
@@ -947,7 +1130,7 @@ void Wave_Think()
 	if (g_Wave.state == WAVE_NET_OFF)
 	{
 		const bool retryPending = g_WavePendingDiff >= 0;
-		const bool autoStart = g_WaveAutoArmed && g_cvWaveAuto.value > 0;
+		const bool autoStart = g_WaveAutoArmed && CVAR_GET_FLOAT("ss_wave_auto") > 0;
 
 		if ((retryPending || autoStart) && Wave_AnyPlayerAlive())
 		{
@@ -1027,6 +1210,7 @@ void Wave_Think()
 		return;
 	}
 
+	Wave_UpdateDrops();
 	int alive = Wave_ReapEnemies();
 
 	if (g_Wave.state == WAVE_NET_PREP)

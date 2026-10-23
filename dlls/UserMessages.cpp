@@ -68,7 +68,14 @@ void LinkUserMessages()
 	gmsgPoints = REG_USER_MSG("Points", -1);
 	gmsgWaveState = REG_USER_MSG("WaveState", -1);
 	gmsgGrappleCharge = REG_USER_MSG("GrapCharge", -1);
+	gmsgTechPts = REG_USER_MSG("TechPts", -1);
+	gmsgMeleeCharges = REG_USER_MSG("MeleeKB", -1);
+
+	gmsgSniperScope = REG_USER_MSG("SniperScope", 1);
 }
 int gmsgPoints = 0;
 int gmsgWaveState = 0;
 int gmsgGrappleCharge = 0;
+int gmsgTechPts = 0;
+int gmsgMeleeCharges = 0;
+int gmsgSniperScope = 0;

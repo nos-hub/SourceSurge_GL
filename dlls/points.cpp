@@ -17,8 +17,11 @@
 #include "weapons.h"
 #include "player.h"
 #include "points.h"
+#include "wave.h"
+#include "melee_kb.h"
 #include "UserMessages.h"
 #include "health_on_kill.h"
+#include "sniper.h"
 
 #include <math.h>
 #include <string.h>
@@ -76,6 +79,18 @@ constexpr float STYLE_MELT_HOLD = 1.5f;	  // egon beam held this long
 constexpr int STYLE_OVERHEAT_AMMO = 15;	  // egon ammo at or below this
 constexpr int STYLE_SWARM_COUNT = 3;	  // hornets / snarks alive for SWARM / CHAOS
 
+// sniper
+constexpr float STYLE_NOSCOPE_MULT = 1.5f;	  // fired without the scope up
+constexpr float STYLE_QUICKSCOPE_MULT = 1.5f; // fired within STYLE_QUICKSCOPE_TIME of scoping in
+constexpr float STYLE_COLLAT_MULT = 1.8f;	  // 2nd and later kill of the SAME shot
+constexpr float STYLE_LONGRANGE_MULT = 1.6f;
+constexpr float STYLE_CLOSERANGE_MULT = 1.4f;
+constexpr float STYLE_QUICKSCOPE_TIME = 0.4f; // seconds
+constexpr float STYLE_SNIPER_LONG = 2048.0f;  // units
+constexpr float STYLE_SNIPER_CLOSE = 256.0f;  // units
+
+
+
 // ---------------- tag ids (the client has the same list, keep the order!) ----------------
 enum
 {
@@ -125,7 +140,12 @@ enum
 	STY_SATCHEL,
 	STY_TRAP,
 	STY_SNARK,
-	STY_CHAOS,
+	STY_CHAOS,	
+	STY_NOSCOPE,
+	STY_COLLAT,
+	STY_LONGRANGE,
+	STY_CLOSERANGE,
+	STY_QUICKSCOPE,
 	STY_COUNT
 };
 
@@ -608,6 +628,7 @@ void Points_OnKill(CBaseEntity* pVictim, entvars_t* pevAttacker)
 				AddTag(tags, STY_BONK, 1.8f);
 			else
 				AddTag(tags, STY_MELEE, 1.5f);
+			MeleeKB_OnMeleeKill(pPlayer); // a melee kill restores 1 knockback charge
 			break;
 
 		case WEAPON_GLOCK:
@@ -659,6 +680,30 @@ void Points_OnKill(CBaseEntity* pVictim, entvars_t* pevAttacker)
 				AddTag(tags, STY_OVERHEAT, 1.4f);
 			break;
 
+		case WEAPON_SNIPER:
+		{
+			const SniperShot& shot = Sniper_GetShot();
+
+			if (shot.active)
+			{
+				if (!shot.scoped)
+					AddTag(tags, STY_NOSCOPE, STYLE_NOSCOPE_MULT);
+				else if (shot.scopeAge <= STYLE_QUICKSCOPE_TIME)
+					AddTag(tags, STY_QUICKSCOPE, STYLE_QUICKSCOPE_MULT);
+
+				if (shot.kills >= 1)
+					AddTag(tags, STY_COLLAT, STYLE_COLLAT_MULT);
+			}
+
+			if (dist >= STYLE_SNIPER_LONG)
+				AddTag(tags, STY_LONGRANGE, STYLE_LONGRANGE_MULT);
+			else if (dist <= STYLE_SNIPER_CLOSE)
+				AddTag(tags, STY_CLOSERANGE, STYLE_CLOSERANGE_MULT);
+
+			Sniper_NoteKill(); // so the next kill of this same shot counts as a collateral
+			break;
+		}
+
 		default:
 			break;
 		}
@@ -673,10 +718,12 @@ void Points_OnKill(CBaseEntity* pVictim, entvars_t* pevAttacker)
 
 	const int gained = (int)(POINTS_BASE * mult + 0.5f);
 	pPlayer->m_iPoints += gained;
-
-	HealthOnKill_Grant(pPlayer, (float)gained); // give the player some health on kill, based on points gained
+	HealthOnKill_Grant(pPlayer, (float)gained);
 
 	SendPoints(pPlayer, gained, mult, shown, shownCount, rank);
+
+	// wave grunts may drop rockets / grenades; more points = better odds
+	Wave_OnPlayerKill(pVictim, gained);
 
 	s.lastKillTime = now;
 	s.lastKillInflictor = pevInfl;
@@ -704,4 +751,25 @@ void Points_Reset(CBasePlayer* pPlayer)
 void Points_Sync(CBasePlayer* pPlayer)
 {
 	SendPoints(pPlayer, 0, 0.0f, NULL, 0, 0);
+}
+
+// Movement tech points go into the SAME total as kill points. Message layout (client: MsgFunc_TechPts):
+//   byte  tech id (TECH_* in movement_tech.h)
+//   short points just earned
+//   long  new total
+void Points_AddTech(CBasePlayer* pPlayer, int techId, int points)
+{
+	if (!pPlayer || points <= 0)
+		return;
+
+	pPlayer->m_iPoints += points;
+
+	if (gmsgTechPts == 0)
+		return;
+
+	MESSAGE_BEGIN(MSG_ONE, gmsgTechPts, NULL, pPlayer->pev);
+	WRITE_BYTE(techId);
+	WRITE_SHORT(points);
+	WRITE_LONG(pPlayer->m_iPoints);
+	MESSAGE_END();
 }

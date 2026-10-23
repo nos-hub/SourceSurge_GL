@@ -324,6 +324,10 @@ void W_Precache()
 	// grapple
 	UTIL_PrecacheOtherWeapon("weapon_grapple");
 
+	// sniper
+	UTIL_PrecacheOtherWeapon("weapon_sniper");
+	UTIL_PrecacheOther("ammo_sniper");
+
 	// hornetgun
 	UTIL_PrecacheOtherWeapon("weapon_hornetgun");
 

@@ -11,6 +11,10 @@
 #define POPUP_TIME 2.5f // seconds the kill popup stays on screen
 #define POPUP_FADE 0.5f // fade-out time at the end of it
 
+#define TECH_TIME 1.6f	  // seconds the movement tech indicator stays on screen
+#define TECH_FADE 0.4f	  // fade-out time at the end of it
+#define TECH_STREAK 1.25f // same tech scoring again within this long: the points add up
+
 #define SS_SCALE 6		   // pixels per cell of the big SS letters
 #define SS_GAP 4		   // pixels between the two letters
 #define SS_BLINK_TIME 0.6f // last part of the popup: SS blinks out
@@ -31,7 +35,8 @@ static const char* g_StyleNames[] =
 		"GAUSS", "THROUGH", "RAIL",
 		"BEAM", "MELT", "OVERHEAT",
 		"NEST", "SWARM",
-		"FRAG", "SATCHEL", "TRAP", "SNARK", "CHAOS"};
+		"FRAG", "SATCHEL", "TRAP", "SNARK", "CHAOS",
+		"NOSCOPE", "COLLAT", "LONGRANGE", "CLOSERANGE", "QUICKSCOPE"};
 #define STYLE_NAME_COUNT ((int)(sizeof(g_StyleNames) / sizeof(g_StyleNames[0])))
 
 // rank names and colors, indexed by rank (0 = none)
@@ -46,11 +51,36 @@ static const int g_RankColors[6][3] =
 		{255, 60, 220}	 // SS
 };
 
+// Movement tech names and colours, indexed by tech id. MUST match the TECH_* enum order in dlls/movement_tech.h.
+static const char* g_TechNames[] =
+	{
+		"",
+		"WALLBUG", "SURF", "EDGEBUG", "DOUBLE EDGEBUG", "TRIPLE EDGEBUG",
+		"RAMPSLIDE", "PERF BHOP", "FAST LADDER", "WALL STRAFE", "JUMPBUG"};
+#define TECH_NAME_COUNT ((int)(sizeof(g_TechNames) / sizeof(g_TechNames[0])))
+
+static const int g_TechColors[][3] =
+	{
+		{255, 255, 255},
+		{255, 170, 60},	 // WALLBUG
+		{80, 200, 255},	 // SURF
+		{255, 90, 90},	 // EDGEBUG
+		{255, 70, 130},	 // DOUBLE EDGEBUG
+		{255, 50, 220},	 // TRIPLE EDGEBUG
+		{120, 255, 160}, // RAMPSLIDE
+		{255, 255, 120}, // PERF BHOP
+		{200, 160, 255}, // FAST LADDER
+		{160, 255, 120}, // WALL STRAFE
+		{255, 60, 220}	 // JUMPBUG
+};
+
 DECLARE_MESSAGE(m_Points, Points)
+DECLARE_MESSAGE(m_Points, TechPts)
 
 bool CHudPoints::Init()
 {
 	HOOK_MESSAGE(Points);
+	HOOK_MESSAGE(TechPts);
 
 	m_iTotal = 0;
 	m_iGained = 0;
@@ -59,6 +89,9 @@ bool CHudPoints::Init()
 	m_iTags[0] = m_iTags[1] = m_iTags[2] = 0;
 	m_iRank = 0;
 	m_flPopupStart = -100.0f;
+	m_iTechId = 0;
+	m_iTechSum = 0;
+	m_flTechStart = -100.0f;
 
 	m_iFlags |= HUD_ACTIVE;
 	gHUD.AddHudElem(this);
@@ -94,6 +127,26 @@ bool CHudPoints::MsgFunc_Points(const char* pszName, int iSize, void* pbuf)
 		m_flPopupStart = gEngfuncs.GetClientTime();
 	else
 		m_flPopupStart = -100.0f;
+
+	m_iFlags |= HUD_ACTIVE;
+	return true;
+}
+
+// Movement tech points: byte tech id, short points, long new total (techs add to the same total as kills).
+bool CHudPoints::MsgFunc_TechPts(const char* pszName, int iSize, void* pbuf)
+{
+	BEGIN_READ(pbuf, iSize);
+
+	const int id = READ_BYTE();
+	const int points = READ_SHORT();
+	m_iTotal = READ_LONG();
+
+	const float now = gEngfuncs.GetClientTime();
+	const bool sameStreak = (id == m_iTechId) && (now - m_flTechStart) < TECH_STREAK;
+
+	m_iTechSum = sameStreak ? (m_iTechSum + points) : points;
+	m_iTechId = id;
+	m_flTechStart = now;
 
 	m_iFlags |= HUD_ACTIVE;
 	return true;
@@ -240,6 +293,27 @@ bool CHudPoints::Draw(float flTime)
 				(int)(g_RankColors[m_iRank][1] * fade),
 				(int)(g_RankColors[m_iRank][2] * fade));
 		}
+	}
+
+	// ---- movement tech indicator: tech name, with the points right under it ----
+	const float techAge = gEngfuncs.GetClientTime() - m_flTechStart;
+
+	if (techAge >= 0.0f && techAge < TECH_TIME && m_iTechId > 0 && m_iTechId < TECH_NAME_COUNT &&
+		gHUD.m_Editor->Visible(HUD_TECH_POPUP))
+	{
+		float fade = 1.0f;
+		if (techAge > TECH_TIME - TECH_FADE)
+			fade = (TECH_TIME - techAge) / TECH_FADE;
+
+		gHUD.m_Editor->GetPos(HUD_TECH_POPUP, x, y);
+
+		gEngfuncs.pfnDrawString(x, y, (char*)g_TechNames[m_iTechId],
+			(int)(g_TechColors[m_iTechId][0] * fade),
+			(int)(g_TechColors[m_iTechId][1] * fade),
+			(int)(g_TechColors[m_iTechId][2] * fade));
+
+		snprintf(buf, sizeof(buf), "+%d", m_iTechSum);
+		gEngfuncs.pfnDrawString(x, y + 16, buf, (int)(255 * fade), (int)(220 * fade), (int)(80 * fade));
 	}
 
 	return true;

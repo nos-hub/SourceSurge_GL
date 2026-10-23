@@ -4,6 +4,7 @@
 
 struct entvars_s;
 class CBasePlayer;
+class CBaseEntity;
 
 enum
 {
@@ -32,6 +33,10 @@ bool Wave_IsActive();
 // damage multiplier for hits dealt by wave enemies (1.0 for everything else).
 // call at the top of CBasePlayer::TakeDamage
 float Wave_DamageScale(struct entvars_s* pevAttacker);
+
+// called by the points system after a player's kill is scored: wave grunts may
+// drop grenades / rockets, with a chance that scales with the points of that kill
+void Wave_OnPlayerKill(CBaseEntity* pVictim, int pointsGained);
 
 // client -> server, call from ClientCommand()
 void Wave_ClientReady(CBasePlayer* pPlayer);				// "ss_wave_ready"

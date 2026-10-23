@@ -13,6 +13,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include "movement_tech.h"
 
 // ---------------- tunables ----------------
 #define EDGEBUG_PREFIX "[XJ]"                   // chat prefix
@@ -73,7 +74,9 @@ static void ShowHud(CBasePlayer* pTarget, const char* text)
 
 static void PrintMessage(CBasePlayer* pPlayer, EbState& st, int iDistance, int iSpeed, int iEngineFps)
 {
+
 	st.edgebugs++;
+	MoveTech_OnEdgebug(pPlayer, st.edgebugs);
 
 	char szTag[16] = "";
 	switch (st.edgebugs)

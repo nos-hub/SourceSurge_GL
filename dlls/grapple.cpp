@@ -27,12 +27,12 @@
 #include "UserMessages.h"
 
 // ---------------- tunables ----------------
-constexpr float GRAPPLE_MIN_RANGE = 300.0f;		// units, a quick click
+constexpr float GRAPPLE_MIN_RANGE = 500.0f;		// units, a quick click
 constexpr float GRAPPLE_MAX_RANGE = 1500.0f;	// units, fully charged
-constexpr float GRAPPLE_CHARGE_TIME = 3.5f;		// seconds of holding for the max range
+constexpr float GRAPPLE_CHARGE_TIME = 3.0f;		// seconds of holding for the max range
 constexpr float GRAPPLE_CHARGE_MSG_GAP = 0.05f; // seconds between HUD updates while charging
 constexpr float GRAPPLE_PULL_SPEED = 680.0f;	// units/s (applied to the player, and to the target if it is pulled too)
-constexpr float GRAPPLE_COOLDOWN = 1.5f;		// seconds between shots
+constexpr float GRAPPLE_COOLDOWN = 1.0f;		// seconds between shots
 constexpr float GRAPPLE_STOP_DIST_WALL = 48.0f; // release when this close to a wall anchor
 constexpr float GRAPPLE_STOP_DIST_ENT = 72.0f;	// release when this close to a pulled entity
 constexpr float GRAPPLE_MAX_PULL_TIME = 6.0f;	// safety timeout
