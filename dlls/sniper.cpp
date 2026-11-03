@@ -2,7 +2,7 @@
 //
 // Built from the crossbow: same models, animations and pickup code.
 //
-//   Magazine 5, reserve 25 ("sniper" ammo), reload 2.5 s.
+//   Magazine 5, reserve 20 ("sniper" ammo), reload 2.5 s (a full reload takes 5 rounds from the reserve).
 //   Damage 100 per target. The bullet goes THROUGH living targets (monsters and players) and stops at
 //   solid scenery, so one shot can kill several enemies (collateral).
 //   No crosshair (see sprites/weapon_sniper.txt). HOLD right click to scope: the FOV zooms in and the
@@ -25,42 +25,43 @@
 #include "sniper.h"
 
 // ---------------- tunables ----------------
-constexpr int   SNIPER_MAX_CLIP = 5;
-constexpr int   SNIPER_MAX_CARRY = 25;
-constexpr int   SNIPER_DEFAULT_GIVE = 5;			// ammo in a freshly picked-up weapon
-constexpr int   SNIPER_AMMO_PICKUP = 5;				// ammo_sniper box
+constexpr int SNIPER_MAX_CLIP = 5;
+constexpr int SNIPER_MAX_CARRY = 20;
+constexpr int SNIPER_DEFAULT_GIVE = 5; // ammo in a freshly picked-up weapon
+constexpr int SNIPER_AMMO_PICKUP = 5;  // ammo_sniper box
 constexpr float SNIPER_DAMAGE = 100.0f;
-constexpr float SNIPER_RELOAD_TIME = 2.5f;			// seconds
-constexpr float SNIPER_FIRE_DELAY = 1.2f;			// bolt cycle between shots
-constexpr int   SNIPER_ZOOM_FOV = 20;				// scoped field of view (default is 90)
+constexpr float SNIPER_RELOAD_TIME = 2.5f; // seconds
+constexpr float SNIPER_FIRE_DELAY = 1.2f;  // bolt cycle between shots
+constexpr int SNIPER_ZOOM_FOV = 20;		   // scoped field of view (default is 90)
 constexpr float SNIPER_RANGE = 8192.0f;
-constexpr int   SNIPER_MAX_PIERCE = 16;				// living targets one bullet can go through
-constexpr float SNIPER_NOSCOPE_SPREAD = 0.025f;		// aim cone when firing unscoped (about 1.4 degrees)
-constexpr float SNIPER_RECOIL = 5.0f;				// view kick (degrees, upward)
+constexpr int SNIPER_MAX_PIERCE = 16;			// living targets one bullet can go through
+constexpr float SNIPER_NOSCOPE_SPREAD = 0.025f; // aim cone when firing unscoped (about 1.4 degrees)
+constexpr float SNIPER_RECOIL = 5.0f;			// view kick (degrees, upward)
+constexpr bool SNIPER_SEMI_AUTO = true;			// one shot per click: holding the button does not keep firing
 
-#define SNIPER_VMODEL "models/v_crossbow.mdl"
-#define SNIPER_PMODEL "models/p_crossbow.mdl"
-#define SNIPER_WMODEL "models/w_crossbow.mdl"
+// TIMING NOTE: this weapon is not client-predicted (UseDecrement is false), so its attack and idle timers use
+// ABSOLUTE game time (gpGlobals->time). Do not use UTIL_WeaponTimeBase()/GetNextAttackDelay() for
+// m_flNextPrimaryAttack or m_flTimeWeaponIdle here: they are relative values and would let the weapon fire every
+// frame. Only the player's m_flNextAttack (reload / draw) is relative, as in the base class.
+
+#define SNIPER_VMODEL "models/v_awp.mdl"
+#define SNIPER_PMODEL "models/p_awp.mdl"
+#define SNIPER_WMODEL "models/w_awp.mdl"
 #define SNIPER_AMMO_MODEL "models/w_crossbow_clip.mdl"
-#define SNIPER_SND_FIRE "weapons/357_shot1.wav"
-#define SNIPER_SND_RELOAD "weapons/xbow_reload1.wav"
+#define SNIPER_SND_FIRE "weapons/awp1.wav"
+#define SNIPER_SND_RELOAD "weapons/awp/awp_clipin.wav" // simple; or play a chain later
+#define SNIPER_SND_DRAW "weapons/awp/awp_deploy.wav"
 #define SNIPER_BEAM_SPRITE "sprites/laserbeam.spr"
 
 // same animation numbering as the crossbow model
 enum sniper_e
 {
-	SNIPER_IDLE1 = 0,	// full
-	SNIPER_IDLE2,		// empty
-	SNIPER_FIDGET1,
-	SNIPER_FIDGET2,
-	SNIPER_FIRE1,		// full
-	SNIPER_FIRE2,
-	SNIPER_FIRE3,		// empty
+	SNIPER_IDLE = 0,
+	SNIPER_SHOOT1,
+	SNIPER_SHOOT2,
+	SNIPER_SHOOT3,
 	SNIPER_RELOAD,
-	SNIPER_DRAW1,		// full
-	SNIPER_DRAW2,		// empty
-	SNIPER_HOLSTER1,	// full
-	SNIPER_HOLSTER2		// empty
+	SNIPER_DRAW
 };
 
 static SniperShot g_SniperShot = {false, false, 0.0f, 0};
@@ -133,7 +134,7 @@ bool CSniper::GetItemInfo(ItemInfo* p)
 	p->pszAmmo2 = NULL;
 	p->iMaxAmmo2 = -1;
 	p->iMaxClip = SNIPER_MAX_CLIP;
-	p->iSlot = 2;
+	p->iSlot = 3;
 	p->iPosition = 4;
 	p->iId = WEAPON_SNIPER;
 	p->iFlags = 0;
@@ -173,34 +174,51 @@ bool CSniper::Deploy()
 	m_pPlayer->m_iFOV = 0;
 	SendScopeMessage(false);
 
-	return DefaultDeploy(SNIPER_VMODEL, SNIPER_PMODEL, m_iClip != 0 ? SNIPER_DRAW1 : SNIPER_DRAW2, "bow");
+	const bool bDeployed = DefaultDeploy(SNIPER_VMODEL, SNIPER_PMODEL, SNIPER_DRAW, "carbine");
+
+	// absolute timers (same as your note)
+	m_flNextPrimaryAttack = gpGlobals->time + 0.5f;
+	m_flTimeWeaponIdle = gpGlobals->time + 1.5f;
+
+	return bDeployed;
 }
 
 void CSniper::Holster()
 {
-	m_fInReload = false; // cancel any reload in progress.
+	m_fInReload = false;
 
 	SetScope(false);
 
-	m_pPlayer->m_flNextAttack = UTIL_WeaponTimeBase() + 0.5;
-	SendWeaponAnim(m_iClip != 0 ? SNIPER_HOLSTER1 : SNIPER_HOLSTER2);
+	m_pPlayer->m_flNextAttack = UTIL_WeaponTimeBase() + 0.5f;
+	// AWP models usually have no holster seq — don't call HOLSTER1/2
 }
 
 // Holding right click keeps the scope up; letting go (or reloading) drops it.
 void CSniper::ItemPostFrame()
 {
+	static int s_lastReserve = -1;
+	const int reserveNow = m_pPlayer->m_rgAmmo[m_iPrimaryAmmoType];
+
 	const bool wantScope = (m_pPlayer->pev->button & IN_ATTACK2) != 0 && !m_fInReload && m_pPlayer->IsAlive();
 	SetScope(wantScope);
+
+	// The base class runs "if secondary attack ... else if primary attack": a held right click would count as a
+	// secondary attack every frame and the primary attack (left click) would never run while scoped.
+	m_pPlayer->pev->button &= ~IN_ATTACK2;
 
 	CBasePlayerWeapon::ItemPostFrame();
 }
 
 void CSniper::PrimaryAttack()
 {
+	// one bullet per click (a held button must not fire again when the bolt is ready)
+	if (SNIPER_SEMI_AUTO && (m_pPlayer->m_afButtonPressed & IN_ATTACK) == 0)
+		return;
+
 	if (m_iClip <= 0)
 	{
 		PlayEmptySound();
-		m_flNextPrimaryAttack = GetNextAttackDelay(0.3f);
+		m_flNextPrimaryAttack = gpGlobals->time + 0.3f;
 		return;
 	}
 
@@ -216,7 +234,7 @@ void CSniper::Fire()
 	m_pPlayer->m_iWeaponVolume = LOUD_GUN_VOLUME;
 	m_pPlayer->m_iWeaponFlash = BRIGHT_GUN_FLASH;
 	m_pPlayer->SetAnimation(PLAYER_ATTACK1);
-	SendWeaponAnim(m_iClip != 0 ? SNIPER_FIRE1 : SNIPER_FIRE3);
+	SendWeaponAnim(RANDOM_LONG(SNIPER_SHOOT1, SNIPER_SHOOT3));
 	EMIT_SOUND_DYN(ENT(m_pPlayer->pev), CHAN_WEAPON, SNIPER_SND_FIRE, 1.0f, ATTN_NORM, 0, 100);
 
 	Vector anglesAim = m_pPlayer->pev->v_angle + m_pPlayer->pev->punchangle;
@@ -318,8 +336,8 @@ void CSniper::Fire()
 		// HEV suit - indicate out of ammo condition
 		m_pPlayer->SetSuitUpdate("!HEV_AMO0", false, 0);
 
-	m_flNextPrimaryAttack = GetNextAttackDelay(SNIPER_FIRE_DELAY);
-	m_flTimeWeaponIdle = UTIL_WeaponTimeBase() + (m_iClip != 0 ? 5.0f : 1.0f);
+	m_flNextPrimaryAttack = gpGlobals->time + SNIPER_FIRE_DELAY;
+	m_flTimeWeaponIdle = gpGlobals->time + SNIPER_FIRE_DELAY + (m_iClip != 0 ? 5.0f : 1.0f);
 }
 
 void CSniper::Reload()
@@ -329,10 +347,12 @@ void CSniper::Reload()
 
 	SetScope(false);
 
-	// The crossbow reload animation is longer than 2.5 s: it is cut when the reload ends.
 	if (DefaultReload(SNIPER_MAX_CLIP, SNIPER_RELOAD, SNIPER_RELOAD_TIME))
 	{
-		EMIT_SOUND_DYN(ENT(m_pPlayer->pev), CHAN_ITEM, SNIPER_SND_RELOAD, RANDOM_FLOAT(0.95, 1.0), ATTN_NORM, 0, 93 + RANDOM_LONG(0, 0xF));
+		m_flNextPrimaryAttack = gpGlobals->time + SNIPER_RELOAD_TIME;
+		m_flTimeWeaponIdle = gpGlobals->time + SNIPER_RELOAD_TIME + 1.0f;
+		EMIT_SOUND_DYN(ENT(m_pPlayer->pev), CHAN_ITEM, SNIPER_SND_RELOAD,
+			RANDOM_FLOAT(0.95f, 1.0f), ATTN_NORM, 0, 93 + RANDOM_LONG(0, 0xF));
 	}
 }
 
@@ -340,10 +360,10 @@ void CSniper::WeaponIdle()
 {
 	ResetEmptySound();
 
-	if (m_flTimeWeaponIdle < UTIL_WeaponTimeBase())
+	if (m_flTimeWeaponIdle < gpGlobals->time)
 	{
-		SendWeaponAnim(m_iClip != 0 ? SNIPER_IDLE1 : SNIPER_IDLE2);
-		m_flTimeWeaponIdle = UTIL_WeaponTimeBase() + RANDOM_FLOAT(10, 15);
+		SendWeaponAnim(SNIPER_IDLE);
+		m_flTimeWeaponIdle = gpGlobals->time + RANDOM_FLOAT(10, 15);
 	}
 }
 

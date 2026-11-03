@@ -1,42 +1,38 @@
 #include "hud.h"
 #include "cl_util.h"
-#include "math.h"
+#include "ss_hud_editor_v2.h"
+#include "hud_speedometer.h"
+#include <math.h>
+#include <stdio.h>
 
-CHudSpeedometer g_HudSpeedometer( NULL );
-
-int CHudSpeedometer::Init()
+bool CHudSpeedometer::Init()
 {
-    m_id = HUD_SPEEDOMETER;
-    return 1;
+	m_id = HUD_SPEEDOMETER;
+	return true;
 }
 
-int CHudSpeedometer::VidInit()
+bool CHudSpeedometer::VidInit()
 {
-    return 1;
+	return true;
 }
 
-int CHudSpeedometer::Draw( float flTime )
+bool CHudSpeedometer::Draw(float flTime)
 {
-    if( !gHUD.m_Editor->Visible(m_id) ) 
-        return 1;
+	if (!gHUD.m_Editor->Visible(m_id))
+		return true;
 
-    int x, y;
-    gHUD.m_Editor->GetPos(m_id, x, y);
+	int x, y;
+	gHUD.m_Editor->GetPos(m_id, x, y);
 
-    // Get player velocity
-    cl_entity_t *pPlayer = gEngfuncs.GetLocalPlayer();
-    if( !pPlayer ) return 1;
+	// CHud already tracks the player's velocity
+	const Vector& vel = gHUD.m_vecPlayerVelocity;
+	const float speed = sqrtf(vel.x * vel.x + vel.y * vel.y);
 
-    float speed = sqrt( 
-        pPlayer->velocity[0] * pPlayer->velocity[0] +
-        pPlayer->velocity[1] * pPlayer->velocity[1]
-    );
+	char buf[32];
+	snprintf(buf, sizeof(buf), "SPD: %.0f", speed);
 
-    char buf[32];
-    snprintf(buf, sizeof(buf), "SPD: %.0f", speed);
+	gEngfuncs.pfnDrawSetTextColor(1.0f, 1.0f, 1.0f);
+	gEngfuncs.pfnDrawConsoleString(x, y, buf);
 
-    gEngfuncs.pfnDrawSetTextColor( 1.0f, 1.0f, 1.0f );
-    gEngfuncs.pfnDrawConsoleString( x, y, buf );
-
-    return 1;
+	return true;
 }

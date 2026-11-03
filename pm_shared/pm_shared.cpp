@@ -25,10 +25,12 @@
 #include "pm_materials.h"
 #include "pm_movevars.h"
 #include "pm_debug.h"
+#include "jumpstats.h"
 #include <stdio.h>	// NULL
 #include <string.h> // strcpy
 #include <stdlib.h> // atoi
 #include <ctype.h>	// isspace
+
 
 #ifdef CLIENT_DLL
 // Spectator Mode
@@ -2148,6 +2150,7 @@ void PM_Duck()
 
 void PM_LadderMove(physent_t* pLadder)
 {
+
 	Vector ladderCenter;
 	trace_t trace;
 	Vector floor;
@@ -2156,6 +2159,9 @@ void PM_LadderMove(physent_t* pLadder)
 	if (pmove->movetype == MOVETYPE_NOCLIP)
 		return;
 
+#if !defined(CLIENT_DLL)
+		JumpStats_PM_LadderMove(pmove, pLadder);
+#endif
 
 	pmove->PM_GetModelBounds(pLadder->model, modelmins, modelmaxs);
 
@@ -2558,9 +2564,22 @@ void PM_PreventMegaBunnyJumping()
 PM_Jump
 =============
 */
-void PM_Jump()
+void PM_Jump_Real(void);
+
+void PM_Jump(void)
 {
-	int i;
+#if !defined(CLIENT_DLL)
+	JumpStats_PM_JumpPre(pmove);
+#endif
+	PM_Jump_Real();
+#if !defined(CLIENT_DLL)
+	JumpStats_PM_JumpPost(pmove);
+#endif
+}
+
+void PM_Jump_Real(void)
+{
+int i;
 
 	if (0 != pmove->dead)
 	{
@@ -3412,6 +3431,11 @@ void PM_Move(struct playermove_s* ppmove, qboolean server)
 	assert(pm_shared_initialized);
 
 	pmove = ppmove;
+
+#if !defined(CLIENT_DLL)
+	if (server)
+		JumpStats_PM_Move(ppmove);
+#endif
 
 	PM_PlayerMove(server);
 

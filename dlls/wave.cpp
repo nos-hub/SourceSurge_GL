@@ -34,6 +34,7 @@
 #include "UserMessages.h"
 #include "points.h"
 #include "wave.h"
+#include "melee_kb.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -63,13 +64,14 @@
 #define WAVE_MAX_PLAYERS 32
 
 // item drops from wave grunts (hand grenades, SMG grenades, rockets)
-#define WAVE_MAX_DROPS 16			// pickups kept on the map at once (the oldest vanishes first)
+#define WAVE_MAX_DROPS 40			// pickups kept on the map at once (the oldest vanishes first)
 #define WAVE_DROP_LIFETIME 45.0f	// seconds before an uncollected drop disappears
-#define WAVE_DROP_BASE_CHANCE 0.10f // chance at 100 points (x1.0); scales linearly with the points of the kill
+#define WAVE_DROP_BASE_CHANCE 0.40f // chance at 100 points (x1.0); scales linearly with the points of the kill
 #define WAVE_DROP_MAX_CHANCE 0.85f	// the chance never goes above this
-#define WAVE_DROP_W_NADE 45			// weights: which item drops once a drop happens
-#define WAVE_DROP_W_SMG 35
+#define WAVE_DROP_W_NADE 30		// weights: which item drops once a drop happens
+#define WAVE_DROP_W_SMG 25
 #define WAVE_DROP_W_ROCKET 20
+#define WAVE_DROP_W_SNIPER 40
 #define WAVE_DROP_NADE_COUNT 2 // hand grenades inside a dropped grenade pickup
 
 // session state. 0-4 are also what the client HUD understands.
@@ -470,13 +472,12 @@ static void Wave_Send(bool force)
 	}
 }
 
-// ---------------------------------------------------------------------------
-// enemies
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// item drops
-// ---------------------------------------------------------------------------
+// true while the pickup is still lying on the map (a picked-up weapon becomes part of
+// the player's inventory and must NOT be removed by us)
+static bool Wave_DropIsLoose(CBaseEntity* pEnt)
+{
+	return pEnt && pEnt->pev->owner == NULL && pEnt->pev->movetype != MOVETYPE_FOLLOW;
+}
 
 static void Wave_ClearDrops(bool removeThem)
 {
@@ -485,7 +486,7 @@ static void Wave_ClearDrops(bool removeThem)
 		if (removeThem)
 		{
 			CBaseEntity* pEnt = g_Wave.hDrop[i];
-			if (pEnt)
+			if (pEnt && Wave_DropIsLoose(pEnt))
 				UTIL_Remove(pEnt);
 		}
 		g_Wave.hDrop[i] = NULL;
@@ -493,7 +494,7 @@ static void Wave_ClearDrops(bool removeThem)
 	}
 }
 
-// removes drops that have been lying around too long (picked-up ones are already gone)
+// removes drops that have been lying around too long (picked-up ones are just forgotten)
 static void Wave_UpdateDrops()
 {
 	const float now = gpGlobals->time;
@@ -504,7 +505,8 @@ static void Wave_UpdateDrops()
 			continue;
 		if (now - g_Wave.dropTime[i] > WAVE_DROP_LIFETIME)
 		{
-			UTIL_Remove(pEnt);
+			if (Wave_DropIsLoose(pEnt))
+				UTIL_Remove(pEnt);
 			g_Wave.hDrop[i] = NULL;
 		}
 	}
@@ -513,7 +515,7 @@ static void Wave_UpdateDrops()
 // creates one weighted-random pickup at the given position
 static void Wave_SpawnDrop(const Vector& origin)
 {
-	const int totalWeight = WAVE_DROP_W_NADE + WAVE_DROP_W_SMG + WAVE_DROP_W_ROCKET;
+	const int totalWeight = WAVE_DROP_W_NADE + WAVE_DROP_W_SMG + WAVE_DROP_W_ROCKET + WAVE_DROP_W_SNIPER;
 	const int roll = RANDOM_LONG(0, totalWeight - 1);
 
 	const char* classname = "ammo_rpgclip"; // rockets
@@ -526,6 +528,10 @@ static void Wave_SpawnDrop(const Vector& origin)
 	else if (roll < WAVE_DROP_W_NADE + WAVE_DROP_W_SMG)
 	{
 		classname = "ammo_ARgrenades"; // MP5 / SMG grenades
+	}
+	else if (roll >= WAVE_DROP_W_NADE + WAVE_DROP_W_SMG + WAVE_DROP_W_ROCKET)
+	{
+		classname = "ammo_sniper"; // sniper ammo
 	}
 
 	CBaseEntity* pItem = CBaseEntity::Create(classname, origin, Vector(0, RANDOM_FLOAT(0.0f, 360.0f), 0), NULL);
@@ -562,7 +568,7 @@ static void Wave_SpawnDrop(const Vector& origin)
 	}
 
 	CBaseEntity* pReplaced = g_Wave.hDrop[slot];
-	if (pReplaced)
+	if (pReplaced && Wave_DropIsLoose(pReplaced))
 		UTIL_Remove(pReplaced);
 
 	g_Wave.hDrop[slot] = pItem;
@@ -1071,19 +1077,10 @@ bool Wave_IsActive()
 	return g_Wave.locked;
 }
 
-// Every frame: living players always have the HEV suit (single-player rules do not give it, and
-// without it the client HUD hides weapons and ammo). While sv_allweapons is on it also prints a
-// status line every 3 seconds, so you can see what the server thinks the player owns.
-static void Wave_SuitAndStatus()
+// Every frame: living players always have the HEV suit. Single-player rules do not give it,
+// and without it the client HUD hides weapons and ammo.
+static void Wave_EnsureSuit()
 {
-	static float s_flNextStatus = 0.0f;
-
-	const bool report = gpGlobals->time >= s_flNextStatus || s_flNextStatus > gpGlobals->time + 5.0f;
-	if (report)
-		s_flNextStatus = gpGlobals->time + 3.0f;
-
-	const bool allWeapons = CVAR_GET_FLOAT("sv_allweapons") > 0;
-
 	for (int i = 1; i <= gpGlobals->maxClients; i++)
 	{
 		CBaseEntity* pEnt = UTIL_PlayerByIndex(i);
@@ -1091,28 +1088,16 @@ static void Wave_SuitAndStatus()
 			continue;
 
 		CBasePlayer* pPlayer = (CBasePlayer*)pEnt;
-
 		if (!pPlayer->HasSuit())
 			pPlayer->SetHasSuit(true);
-
-		if (report && allWeapons)
-		{
-			int weapons = 0;
-			for (int slot = 0; slot < MAX_ITEM_TYPES; slot++)
-			{
-				for (CBasePlayerItem* pItem = pPlayer->m_rgpPlayerItems[slot]; pItem; pItem = pItem->m_pNext)
-					weapons++;
-			}
-			ALERT(at_console, " ",
-				i, pPlayer->HasSuit() ? 1 : 0, weapons);
-		}
 	}
 }
 
 void Wave_Think()
 {
 	// style-bonus tracking (bhop chain, 360 spins, flicks...) runs every frame
-	Wave_SuitAndStatus();
+	Wave_EnsureSuit();
+	MeleeKB_Think();
 	Points_Think();
 
 	const float t = gpGlobals->time;
@@ -1269,6 +1254,7 @@ void Wave_Think()
 void Wave_Precache()
 {
 	UTIL_PrecacheOther("monster_human_grunt");
+	UTIL_PrecacheOther("ammo_sniper");
 }
 
 // ---------------------------------------------------------------------------
@@ -1370,6 +1356,67 @@ static void Wave_StopCmd()
 	ALERT(at_console, "wave mode stopped\n");
 }
 
+// ss_dllinfo: prints the full path and write time of the hl.dll that is REALLY loaded
+// (also printed once when the DLL loads). Settles every "is it running the old DLL?" doubt.
+#ifdef _WIN32
+// windows.h is not available in this translation unit (and including it next to the SDK headers
+// invites macro clashes), so the few kernel32 calls needed are declared by hand.
+struct SSFileTime
+{
+	unsigned long low, high;
+};
+struct SSSystemTime
+{
+	unsigned short year, month, dayOfWeek, day, hour, minute, second, ms;
+};
+struct SSFileAttr
+{
+	unsigned long attrs;
+	SSFileTime creation, access, written;
+	unsigned long sizeHigh, sizeLow;
+};
+
+extern "C" {
+__declspec(dllimport) int __stdcall GetModuleHandleExA(unsigned long dwFlags, const char* lpModuleName, void** phModule);
+__declspec(dllimport) unsigned long __stdcall GetModuleFileNameA(void* hModule, char* lpFilename, unsigned long nSize);
+__declspec(dllimport) int __stdcall GetFileAttributesExA(const char* lpFileName, int fInfoLevelId, void* lpFileInformation);
+__declspec(dllimport) int __stdcall FileTimeToLocalFileTime(const SSFileTime* lpFileTime, SSFileTime* lpLocalFileTime);
+__declspec(dllimport) int __stdcall FileTimeToSystemTime(const SSFileTime* lpFileTime, SSSystemTime* lpSystemTime);
+}
+#endif
+
+static void Wave_DllInfoCmd()
+{
+#ifdef _WIN32
+	void* hMod = 0;
+	// 0x4 = FROM_ADDRESS (find the module that contains this function), 0x2 = UNCHANGED_REFCOUNT
+	if (GetModuleHandleExA(0x4 | 0x2, (const char*)&Wave_DllInfoCmd, &hMod))
+	{
+		char path[260];
+		path[0] = 0;
+		GetModuleFileNameA(hMod, path, sizeof(path));
+
+		SSFileAttr fad;
+		memset(&fad, 0, sizeof(fad));
+		if (GetFileAttributesExA(path, 0, &fad)) // 0 = GetFileExInfoStandard
+		{
+			SSFileTime local;
+			SSSystemTime st;
+			memset(&local, 0, sizeof(local));
+			memset(&st, 0, sizeof(st));
+			FileTimeToLocalFileTime(&fad.written, &local);
+			FileTimeToSystemTime(&local, &st);
+			ALERT(at_console, "[sourcesurge] server dll: %s\n[sourcesurge] file written %02d/%02d/%04d %02d:%02d:%02d, wave.cpp compiled %s %s\n",
+				path, (int)st.day, (int)st.month, (int)st.year, (int)st.hour, (int)st.minute, (int)st.second, __DATE__, __TIME__);
+			return;
+		}
+		ALERT(at_console, "[sourcesurge] server dll: %s\n", path);
+		return;
+	}
+#endif
+	ALERT(at_console, "[sourcesurge] wave.cpp compiled %s %s\n", __DATE__, __TIME__);
+}
+
 void Wave_Init()
 {
 	CVAR_REGISTER(&g_cvWaveAuto);
@@ -1382,6 +1429,10 @@ void Wave_Init()
 	g_engfuncs.pfnAddServerCommand(cmdStart, Wave_StartCmd);
 	g_engfuncs.pfnAddServerCommand(cmdStartAlias, Wave_StartCmd);
 	g_engfuncs.pfnAddServerCommand(cmdStop, Wave_StopCmd);
+
+	static char cmdInfo[] = "ss_dllinfo";
+	g_engfuncs.pfnAddServerCommand(cmdInfo, Wave_DllInfoCmd);
+	Wave_DllInfoCmd(); // also once at load
 
 	Wave_ClearEnemies(false);
 	Wave_ResetFlags();

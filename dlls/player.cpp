@@ -2048,6 +2048,7 @@ void CBasePlayer::PreThink()
 
 	JumpStats_PreThink(this);
 
+
 	// StudioFrameAdvance( );//!!!HACKHACK!!! Can't be hit by traceline when not animating?
 
 	// Clear out ladder pointer
@@ -5167,6 +5168,7 @@ static const char* const g_szAllWeapons[] =
 		"weapon_shotgun",
 		"weapon_rpg",
 		"weapon_grapple",
+		"weapon_sniper",
 };
 
 // removed from the game in this mode: stripped if the player has them (map pickups, etc.)

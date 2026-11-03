@@ -65,7 +65,7 @@ bool CHudScope::Draw(float flTime)
 
 		if (dy >= r || -dy >= r)
 		{
-			gEngfuncs.pfnFillRGBA(0, y, sw, SCOPE_STEP, 0, 0, 0, 255);
+			gEngfuncs.pfnFillRGBABlend(0, y, sw, SCOPE_STEP, 0, 0, 0, 255);
 			continue;
 		}
 
@@ -74,20 +74,20 @@ bool CHudScope::Draw(float flTime)
 		const int right = cx + half;
 
 		if (left > 0)
-			gEngfuncs.pfnFillRGBA(0, y, left, SCOPE_STEP, 0, 0, 0, 255);
+			gEngfuncs.pfnFillRGBABlend(0, y, left, SCOPE_STEP, 0, 0, 0, 255);
 		if (right < sw)
-			gEngfuncs.pfnFillRGBA(right, y, sw - right, SCOPE_STEP, 0, 0, 0, 255);
+			gEngfuncs.pfnFillRGBABlend(right, y, sw - right, SCOPE_STEP, 0, 0, 0, 255);
 	}
 
 	// thin crosshair across the lens, with a small gap in the middle
 	const int gap = 8;
-	gEngfuncs.pfnFillRGBA(cx - r, cy - 1, r - gap, 2, 0, 0, 0, 255);		 // left
-	gEngfuncs.pfnFillRGBA(cx + gap, cy - 1, r - gap, 2, 0, 0, 0, 255);		 // right
-	gEngfuncs.pfnFillRGBA(cx - 1, cy - r, 2, r - gap, 0, 0, 0, 255);		 // top
-	gEngfuncs.pfnFillRGBA(cx - 1, cy + gap, 2, r - gap, 0, 0, 0, 255);		 // bottom
+	gEngfuncs.pfnFillRGBABlend(cx - r, cy - 1, r - gap, 2, 0, 0, 0, 255);	 // left
+	gEngfuncs.pfnFillRGBABlend(cx + gap, cy - 1, r - gap, 2, 0, 0, 0, 255);	 // right
+	gEngfuncs.pfnFillRGBABlend(cx - 1, cy - r, 2, r - gap, 0, 0, 0, 255);		 // top
+	gEngfuncs.pfnFillRGBABlend(cx - 1, cy + gap, 2, r - gap, 0, 0, 0, 255);		 // bottom
 
 	// small centre dot
-	gEngfuncs.pfnFillRGBA(cx - 1, cy - 1, 2, 2, 255, 40, 40, 255);
+	gEngfuncs.pfnFillRGBABlend(cx - 1, cy - 1, 2, 2, 255, 40, 40, 255);
 
 	return true;
 }

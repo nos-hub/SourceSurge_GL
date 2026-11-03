@@ -54,6 +54,7 @@
 #include "edgebug.h"
 #include "jumpstats.h"
 #include "checkpoint.h"
+#include "surffix.h"
 
 DLL_GLOBAL unsigned int g_ulFrameCount;
 
@@ -220,6 +221,8 @@ void ClientPutInServer(edict_t* pEntity)
 
 	// Allocate a CBasePlayer for pev, and call spawn
 	pPlayer->Spawn();
+
+	JumpStats_ClientPutInServer(pPlayer);
 
 	// Reset interpolation during first frame
 	pPlayer->pev->effects |= EF_NOINTERP;
@@ -525,6 +528,10 @@ void ClientCommand(edict_t* pEntity)
 
 	auto player = GetClassPtr<CBasePlayer>(reinterpret_cast<CBasePlayer*>(&pEntity->v));
 
+	// jumpstats first (handles console cmds and "say /cmd")
+	if (JumpStats_Command(player, pcmd))
+		return;
+
 	if (FStrEq(pcmd, "say"))
 	{
 		Host_Say(pEntity, false);
@@ -545,7 +552,6 @@ void ClientCommand(edict_t* pEntity)
 			player->GiveNamedItem(STRING(iszItem));
 		}
 	}
-
 	else if (FStrEq(pcmd, "drop"))
 	{
 		// player is dropping an item.
@@ -635,10 +641,7 @@ void ClientCommand(edict_t* pEntity)
 	{
 		Slam_Request(GetClassPtr((CBasePlayer*)pev));
 	}
-	else if (JumpStats_Command(GetClassPtr((CBasePlayer*)pev), pcmd)) {}
-
 	else if (Checkpoint_Command(GetClassPtr((CBasePlayer*)pev), pcmd)) {} // checkpoint system
-
 	else
 	{
 		// tell the user they entered an unknown command
@@ -660,7 +663,6 @@ void ClientCommand(edict_t* pEntity)
 		ClientPrint(&pEntity->v, HUD_PRINTCONSOLE, UTIL_VarArgs("Unknown command: %s\n", command));
 	}
 }
-
 
 /*
 ========================
@@ -1095,6 +1097,9 @@ void ClientPrecache()
 	
 	//wave shit
 	Wave_Precache();
+
+	//jumpstats
+	JumpStats_Precache();
 
 	if (giPrecacheGrunt)
 		UTIL_PrecacheOther("monster_human_grunt");
@@ -1985,11 +1990,15 @@ This is the time to examine the usercmd for anything extra.  This call happens e
 void CmdStart(const edict_t* player, const struct usercmd_s* cmd, unsigned int random_seed)
 {
 	Edgebug_CmdStart(player, cmd);
+	SurfFix_CmdStart(player);
+
 	entvars_t* pev = (entvars_t*)&player->v;
 	CBasePlayer* pl = dynamic_cast<CBasePlayer*>(CBasePlayer::Instance(pev));
 
 	if (!pl)
 		return;
+
+	JumpStats_CmdStart(pl, cmd);
 
 	if (pl->pev->groupinfo != 0)
 	{
@@ -2008,6 +2017,9 @@ Each cmdstart is exactly matched with a cmd end, clean up any group trace flags,
 */
 void CmdEnd(const edict_t* player)
 {
+	SurfFix_CmdEnd(player); 
+	
+
 	entvars_t* pev = (entvars_t*)&player->v;
 	CBasePlayer* pl = dynamic_cast<CBasePlayer*>(CBasePlayer::Instance(pev));
 

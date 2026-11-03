@@ -78,7 +78,8 @@
     <PostBuildEvent>
       <Command>cmd /c ""$(ProjectDir)..\..\filecopy.bat" "$(OutDir)" "cl_dlls" "$(TargetFileName)""
 cmd /c ""$(ProjectDir)..\..\filecopy.bat" "$(OutDir)" "cl_dlls" "$(TargetName).pdb""
-cmd /c ""$(ProjectDir)..\..\filecopy.bat" "$(SolutionDir)../../network" "" "delta.lst""</Command>
+cmd /c ""$(ProjectDir)..\..\filecopy.bat" "$(SolutionDir)../../network" "" "delta.lst""
+xcopy /Y /Q "$(TargetPath)" "D:\.SourceSurge_gld\xash3d-fwgs-win32-i386\sourcesurge_gs\cl_dlls\"</Command>
       <Message>Installing client files</Message>
     </PostBuildEvent>
     <PostBuildEvent />
@@ -111,7 +112,8 @@ cmd /c ""$(ProjectDir)..\..\filecopy.bat" "$(SolutionDir)../../network" "" "delt
     <PostBuildEvent>
       <Command>cmd /c ""$(ProjectDir)..\..\filecopy.bat" "$(OutDir)" "cl_dlls" "$(TargetFileName)""
 cmd /c ""$(ProjectDir)..\..\filecopy.bat" "$(OutDir)" "cl_dlls" "$(TargetName).pdb""
-cmd /c ""$(ProjectDir)..\..\filecopy.bat" "$(SolutionDir)../../network" "" "delta.lst""</Command>
+cmd /c ""$(ProjectDir)..\..\filecopy.bat" "$(SolutionDir)../../network" "" "delta.lst""
+xcopy /Y /Q "$(TargetPath)" "D:\.SourceSurge_gld\xash3d-fwgs-win32-i386\sourcesurge_gs\cl_dlls\"</Command>
       <Message>Installing client files</Message>
     </PostBuildEvent>
     <PostBuildEvent />
@@ -208,7 +210,7 @@ cmd /c ""$(ProjectDir)..\..\filecopy.bat" "$(SolutionDir)../../network" "" "delt
     <ClCompile Include="..\..\pm_shared\pm_shared.cpp" />
     <ClCompile Include="..\..\public\interface.cpp" />
     <ClCompile Include="..\..\cl_dll\hl_discord_rpc.cpp" />
-    <ClCompile Include="hud_speedometer.cpp" />
+    <ClCompile Include="..\..\cl_dll\hud_speedometer.cpp" />
     <ClCompile Include="..\..\cl_dll\hud_timer.cpp" />
     <ClInclude Include="..\..\cl_dll\hl_discord_rpc.h" />
   </ItemGroup>
@@ -229,6 +231,7 @@ cmd /c ""$(ProjectDir)..\..\filecopy.bat" "$(SolutionDir)../../network" "" "delt
     <ClInclude Include="..\..\cl_dll\hud_meleecharges.h" />
     <ClInclude Include="..\..\cl_dll\hud_scope.h" />
     <ClInclude Include="..\..\cl_dll\hud_spectator.h" />
+    <ClInclude Include="..\..\cl_dll\hud_speedometer.h" />
     <ClInclude Include="..\..\cl_dll\hud_wavemode.h" />
     <ClInclude Include="..\..\cl_dll\interpolation.h" />
     <ClInclude Include="..\..\cl_dll\in_defs.h" />

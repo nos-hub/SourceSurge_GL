@@ -1,16 +1,14 @@
-#ifndef HUD_SPEEDOMETER_H
-#define HUD_SPEEDOMETER_H
+#pragma once
 
 #include "hud.h"
 
 class CHudSpeedometer : public CHudBase
 {
 public:
-	bool Init(void) override;
-	bool VidInit(void) override;
+	bool Init() override;
+	bool VidInit() override;
 	bool Draw(float flTime) override;
+
+private:
+	int m_id = 0;
 };
-
-extern CHudSpeedometer gHudSpeedometer;
-
-#endif

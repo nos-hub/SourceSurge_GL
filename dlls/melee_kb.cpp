@@ -32,7 +32,7 @@ constexpr int MELEE_MAX_CHARGES = 4;
 constexpr float MELEE_KB_WORLD = 450.0f;	// u/s added opposite to the view direction (a jump is ~268)
 constexpr float MELEE_HUD_HEARTBEAT = 1.0f; // seconds between HUD refreshes even without a change
 constexpr int MELEE_MAX_PLAYERS = 32;
-constexpr float MELEE_RECHARGE_TIME = 1.5f; // seconds to passively regain 1 charge
+constexpr float MELEE_RECHARGE_TIME = 5.0f; // seconds to passively regain 1 charge
 
 struct melee_state_t
 {

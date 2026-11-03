@@ -26,6 +26,8 @@ float g_flPlayerSpeed = 0.0f;
 
 void DLLEXPORT V_CalcRefdef(struct ref_params_s* pparams);
 
+
+
 void PM_ParticleLine(float* start, float* end, int pcolor, float life, float vert);
 int PM_GetVisEntInfo(int ent);
 int PM_GetPhysEntInfo(int ent);
@@ -1633,7 +1635,7 @@ void V_CalcSpectatorRefdef(struct ref_params_s* pparams)
 void DLLEXPORT V_CalcRefdef(struct ref_params_s* pparams)
 {
 	//	RecClCalcRefdef(pparams);
-
+	gHUD.m_vecPlayerVelocity = pparams->simvel;
 	// intermission / finale rendering
 	if (0 != pparams->intermission)
 	{

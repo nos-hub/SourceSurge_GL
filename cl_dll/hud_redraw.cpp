@@ -211,7 +211,7 @@ m_AmmoSecondary.Draw( flTime );
 m_Battery.Draw( flTime );
 m_Geiger.Draw( flTime );
 m_Flash.Draw( flTime );
-gHudSpeedometer.Draw(flTime);
+m_Speedometer.Draw(flTime);
 	
 	m_Editor->Draw();
 	return true;

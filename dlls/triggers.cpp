@@ -27,6 +27,8 @@
 #include "saverestore.h"
 #include "trains.h" // trigger_camera has train functionality
 #include "gamerules.h"
+#include "jumpstats.h"
+
 
 #define SF_TRIGGER_PUSH_START_OFF 2		   //spawnflag that makes trigger_push spawn turned OFF
 #define SF_TRIGGER_HURT_TARGETONCE 1	   // Only fire hurt target once
@@ -1942,6 +1944,7 @@ void CTriggerTeleport::Spawn()
 	InitTrigger();
 
 	SetTouch(&CTriggerTeleport::TeleportTouch);
+	
 }
 
 

@@ -61,7 +61,7 @@ constexpr float kPi = 3.14159265f;
 
 // Prints to YOUR console: a status line every 2 s (proves MoveTech_PreThink is running and shows what it sees)
 // and a line for every award. Set to false when everything works.
-constexpr bool TECH_DEBUG = true;
+constexpr bool TECH_DEBUG = false;
 
 struct TechState
 {

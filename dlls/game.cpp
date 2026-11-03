@@ -19,6 +19,8 @@
 #include "game.h"
 #include "filesystem_utils.h"
 #include "wave.h"
+#include "jumpstats.h"
+
 
 cvar_t displaysoundlist = {"displaysoundlist", "0"};
 cvar_t allweapons = {"sv_allweapons", "1", FCVAR_SERVER};
@@ -938,8 +940,8 @@ void GameDLLInit()
 	SERVER_COMMAND("exec skill.cfg\n");
 
 	Wave_Init();
+	JumpStats_Init();
 }
-
 void GameDLLShutdown()
 {
 	FileSystem_FreeFileSystem();

@@ -613,16 +613,21 @@ bool CHudAmmo::MsgFunc_CurWeapon(const char* pszName, int iSize, void* pbuf)
 
 	m_pWeapon = pWeapon;
 
-	if (gHUD.m_iFOV >= 90)
+	if (iId == WEAPON_SNIPER)
+	{
+		// the sniper draws its own scope overlay: no engine crosshair, scoped or not
+		SetCrosshair(0, nullrc, 0, 0, 0);
+	}
+	else if (gHUD.m_iFOV >= 90)
 	{ // normal crosshairs
-		if (fOnTarget && 0 != m_pWeapon->hAutoaim)
+		if (fOnTarget && m_pWeapon->hAutoaim)
 			SetCrosshair(m_pWeapon->hAutoaim, m_pWeapon->rcAutoaim, 255, 255, 255);
 		else
-			SetCrosshair(m_pWeapon->hCrosshair, m_pWeapon->rcCrosshair, 255, 255, 255);
+			SetCrosshair(m_pWeapon->hCrosshair, m_pWeapon->rcCrosshair, 24, 255, 24);
 	}
 	else
 	{ // zoomed crosshairs
-		if (fOnTarget && 0 != m_pWeapon->hZoomedAutoaim)
+		if (fOnTarget && m_pWeapon->hZoomedAutoaim)
 			SetCrosshair(m_pWeapon->hZoomedAutoaim, m_pWeapon->rcZoomedAutoaim, 255, 255, 255);
 		else
 			SetCrosshair(m_pWeapon->hZoomedCrosshair, m_pWeapon->rcZoomedCrosshair, 255, 255, 255);
