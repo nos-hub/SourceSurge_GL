@@ -145,6 +145,8 @@ xcopy /Y /Q "$(TargetDir)hl.pdb" "D:\.SourceSurge_gld\xash3d-fwgs-win32-i386\sou
     <ClCompile Include="..\..\dlls\crossbow.cpp" />
     <ClCompile Include="..\..\dlls\crowbar.cpp" />
     <ClCompile Include="..\..\dlls\grapple.cpp" />
+    <ClCompile Include="..\..\dlls\photo.cpp" />
+    <ClCompile Include="..\..\dlls\photocamera.cpp" />
     <ClCompile Include="..\..\dlls\debug_bot.cpp" />
     <ClCompile Include="..\..\dlls\defaultai.cpp" />
     <ClCompile Include="..\..\dlls\doors.cpp" />
@@ -309,6 +311,8 @@ xcopy /Y /Q "$(TargetDir)hl.pdb" "D:\.SourceSurge_gld\xash3d-fwgs-win32-i386\sou
     <ClInclude Include="..\..\dlls\spectator.h" />
     <ClInclude Include="..\..\dlls\squadmonster.h" />
     <ClInclude Include="..\..\dlls\surffix.h" />
+    <ClInclude Include="..\..\dlls\photo.h" />
+    <ClInclude Include="..\..\dlls\photo_shared.h" />
     <ClInclude Include="..\..\dlls\talkmonster.h" />
     <ClInclude Include="..\..\dlls\teamplay_gamerules.h" />
     <ClInclude Include="..\..\dlls\trains.h" />

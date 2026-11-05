@@ -384,7 +384,9 @@ void CHud::Init()
 	m_Editor = new CHudEditor();
 	m_WaveMode.Init();
 	m_GrappleCharge.Init();
+	m_Photo.Init();
 	m_MeleeCharges.Init();
+	m_Photo.Init();
 	
     // === HUD Editor Registration ===
     // Register the console command
@@ -466,8 +468,10 @@ void CHud::VidInit()
 	m_WaveMode.VidInit();
 	m_Points.VidInit();
 	m_GrappleCharge.VidInit();
+	m_Photo.VidInit();
 	m_MeleeCharges.VidInit();
 	m_Scope.VidInit();
+	m_Photo.VidInit();
 
 	m_scrinfo.iSize = sizeof(m_scrinfo);
 	GetScreenInfo(&m_scrinfo);

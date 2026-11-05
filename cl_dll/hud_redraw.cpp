@@ -127,6 +127,9 @@ bool CHud::Redraw(float flTime, bool intermission)
 		}
 	}
 
+	// photo camera: capture BEFORE any HUD element is drawn
+	m_Photo.PreRedraw();
+
 	if (0 != m_flShotTime && m_flShotTime < flTime)
 	{
 		gEngfuncs.pfnClientCmd("snapshot\n");
@@ -134,6 +137,9 @@ bool CHud::Redraw(float flTime, bool intermission)
 	}
 
 	m_iIntermission = intermission;
+
+	// photo camera: capture BEFORE any HUD element is drawn
+	m_Photo.PreRedraw();
 
 	// if no redrawing is necessary
 	// return 0;

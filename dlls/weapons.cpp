@@ -326,6 +326,9 @@ void W_Precache()
 
 	// sniper
 	UTIL_PrecacheOtherWeapon("weapon_sniper");
+
+	// photo camera
+	UTIL_PrecacheOtherWeapon("weapon_camera");
 	UTIL_PrecacheOther("ammo_sniper");
 
 	// hornetgun

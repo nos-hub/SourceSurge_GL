@@ -64,4 +64,7 @@ extern int gmsgGrappleCharge;
 extern int gmsgTechPts;
 extern int gmsgMeleeCharges;
 extern int gmsgSniperScope;
+extern int gmsgPhotoCap;
+extern int gmsgPhotoDat;
+extern int gmsgPhotoSpr;
 

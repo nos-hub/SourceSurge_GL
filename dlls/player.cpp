@@ -46,6 +46,7 @@
 #include "health_on_kill.h"
 #include "edgebug.h"
 #include "jumpstats.h"
+#include "photo.h"
 
 // #define DUCKFIX
 
@@ -3585,6 +3586,11 @@ void CBasePlayer::ImpulseCommands()
 		if (tr.flFraction != 1.0)
 		{ // line hit something, so paint a decal
 			m_flNextDecalTime = gpGlobals->time + decalfrequency.value;
+
+			// a photo from weapon_camera replaces the normal spray once, then it is used up
+			if (Photo_TrySpray(this, tr))
+				break;
+
 			CSprayCan* pCan = GetClassPtr((CSprayCan*)NULL);
 			pCan->Spawn(pev);
 		}
@@ -5169,6 +5175,7 @@ static const char* const g_szAllWeapons[] =
 		"weapon_rpg",
 		"weapon_grapple",
 		"weapon_sniper",
+		"weapon_camera",
 };
 
 // removed from the game in this mode: stripped if the player has them (map pickups, etc.)
@@ -5222,8 +5229,39 @@ static void StripBannedWeapons(CBasePlayer* pPlayer)
 	}
 }
 
+// top up one ammo type to max and keep the HUD in sync (no pickup popup)
+static void RefillAmmo(CBasePlayer* pPlayer, const char* name, int max)
+{
+	if (!name || !name[0] || max <= 0)
+		return;
+
+	const int i = pPlayer->GetAmmoIndex(name);
+	if (i < 1 || pPlayer->m_rgAmmo[i] >= max)
+		return;
+
+	pPlayer->m_rgAmmo[i] = max;
+
+	MESSAGE_BEGIN(MSG_ONE, gmsgAmmoX, NULL, pPlayer->pev);
+	WRITE_BYTE(i);
+	WRITE_BYTE(max);
+	MESSAGE_END();
+}
+
+// mode: 0 = off, 1 = fixed loadout + refill list, 2 = fixed loadout + infinite reserve for every owned weapon
 void GiveEverything(CBasePlayer* pPlayer)
 {
+	int mode = (int)CVAR_GET_FLOAT("sv_allweapons");
+	if (mode <= 0)
+		return;
+
+	// mode 2 (infinite reserve for all weapons) is cheat-only
+	if (mode >= 2 && CVAR_GET_FLOAT("sv_cheats") == 0)
+	{
+		ClientPrint(pPlayer->pev, HUD_PRINTCONSOLE, "You can't enable sv_allweapons 2 with sv_cheats 0. You need sv_cheats 1.\n");
+		CVAR_SET_FLOAT("sv_allweapons", 1); // fall back to mode 1 so this only prints once
+		mode = 1;
+	}
+
 	StripBannedWeapons(pPlayer);
 
 	// weapons
@@ -5233,27 +5271,25 @@ void GiveEverything(CBasePlayer* pPlayer)
 			pPlayer->GiveNamedItem(g_szAllWeapons[i]);
 	}
 
-	// reserve ammo: top up each refilling type to its max
+	// mode 1: only the listed ammo types refill
 	for (int k = 0; k < ARRAYSIZE(g_szRefillAmmo); k++)
+		RefillAmmo(pPlayer, g_szRefillAmmo[k].name, g_szRefillAmmo[k].max);
+
+	// mode 2: every ammo type used by a weapon the player owns refills
+	if (mode >= 2)
 	{
-		for (int i = 1; i < MAX_AMMO_SLOTS; i++)
+		for (int slot = 0; slot < MAX_ITEM_TYPES; slot++)
 		{
-			const char* name = CBasePlayerItem::AmmoInfoArray[i].pszName;
-			if (!name || !FStrEq(name, g_szRefillAmmo[k].name))
-				continue;
+			for (CBasePlayerItem* pItem = pPlayer->m_rgpPlayerItems[slot]; pItem; pItem = pItem->m_pNext)
+			{
+				ItemInfo info;
+				memset(&info, 0, sizeof(info));
+				if (!pItem->GetItemInfo(&info))
+					continue;
 
-			const int max = g_szRefillAmmo[k].max;
-			if (pPlayer->m_rgAmmo[i] >= max)
-				break;
-
-			pPlayer->m_rgAmmo[i] = max;
-
-			// keep the HUD in sync without the pickup popup
-			MESSAGE_BEGIN(MSG_ONE, gmsgAmmoX, NULL, pPlayer->pev);
-			WRITE_BYTE(i);
-			WRITE_BYTE(max);
-			MESSAGE_END();
-			break;
+				RefillAmmo(pPlayer, info.pszAmmo1, info.iMaxAmmo1);
+				RefillAmmo(pPlayer, info.pszAmmo2, info.iMaxAmmo2);
+			}
 		}
 	}
 }

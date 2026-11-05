@@ -81,20 +81,6 @@ CHalfLifeMultiplay::CHalfLifeMultiplay()
 	{
 		// this code has been moved into engine, to only run server.cfg once
 	}
-	else
-	{
-		// listen server
-		char* lservercfgfile = (char*)CVAR_GET_STRING("lservercfgfile");
-
-		if (lservercfgfile && '\0' != lservercfgfile[0])
-		{
-			char szCommand[256];
-
-			ALERT(at_console, "Executing listen server config file\n");
-			sprintf(szCommand, "exec %s\n", lservercfgfile);
-			SERVER_COMMAND(szCommand);
-		}
-	}
 }
 
 bool CHalfLifeMultiplay::ClientCommand(CBasePlayer* pPlayer, const char* pcmd)
@@ -167,6 +153,10 @@ void CHalfLifeMultiplay::RefreshSkillData()
 //=========================================================
 void CHalfLifeMultiplay::Think()
 {
+	// keep multiplayer movement identical to solo
+	if (CVAR_GET_FLOAT("sv_maxspeed") != 320)
+		CVAR_SET_FLOAT("sv_maxspeed", 320);
+
 	g_VoiceGameMgr.Update(gpGlobals->frametime);
 
 	///// Check game rules /////
@@ -435,19 +425,7 @@ void CHalfLifeMultiplay::ClientDisconnected(edict_t* pClient)
 //=========================================================
 float CHalfLifeMultiplay::FlPlayerFallDamage(CBasePlayer* pPlayer)
 {
-	int iFallDamage = (int)falldamage.value;
-
-	switch (iFallDamage)
-	{
-	case 1: //progressive
-		pPlayer->m_flFallVelocity -= PLAYER_MAX_SAFE_FALL_SPEED;
-		return pPlayer->m_flFallVelocity * DAMAGE_FOR_FALL_SPEED;
-		break;
-	default:
-	case 0: // fixed
-		return 10;
-		break;
-	}
+	return SS_ComputeFallDamage(pPlayer);
 }
 
 //=========================================================

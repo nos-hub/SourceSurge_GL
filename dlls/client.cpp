@@ -54,6 +54,7 @@
 #include "edgebug.h"
 #include "jumpstats.h"
 #include "checkpoint.h"
+#include "photo.h"
 #include "surffix.h"
 
 DLL_GLOBAL unsigned int g_ulFrameCount;
@@ -112,6 +113,8 @@ GLOBALS ASSUMED SET:  g_fGameOver
 */
 void ClientDisconnect(edict_t* pEntity)
 {
+	Photo_PlayerDisconnect(ENTINDEX(pEntity));
+
 	if (g_fGameOver)
 		return;
 
@@ -528,6 +531,10 @@ void ClientCommand(edict_t* pEntity)
 
 	auto player = GetClassPtr<CBasePlayer>(reinterpret_cast<CBasePlayer*>(&pEntity->v));
 
+	// photo camera uploads ("ss_photo ...")
+	if (Photo_ClientCommand(pEntity, pcmd))
+		return;
+
 	// jumpstats first (handles console cmds and "say /cmd")
 	if (JumpStats_Command(player, pcmd))
 		return;
@@ -756,6 +763,8 @@ void ServerActivate(edict_t* pEdictList, int edictCount, int clientMax)
 
 	// Every call to ServerActivate should be matched by a call to ServerDeactivate
 	g_serveractive = 1;
+
+	Photo_ResetAll();
 
 	// Clients have not been initialized yet
 	for (i = 0; i < edictCount; i++)

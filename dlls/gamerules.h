@@ -58,6 +58,8 @@ enum
 	GR_NEUTRAL,
 };
 
+float SS_ComputeFallDamage(CBasePlayer* pPlayer);
+
 class CGameRules
 {
 public:

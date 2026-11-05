@@ -72,6 +72,10 @@ void LinkUserMessages()
 	gmsgMeleeCharges = REG_USER_MSG("MeleeKB", -1);
 
 	gmsgSniperScope = REG_USER_MSG("SniperScope", 1);
+
+	gmsgPhotoCap = REG_USER_MSG("PhotoCap", -1);
+	gmsgPhotoDat = REG_USER_MSG("PhotoDat", -1);
+	gmsgPhotoSpr = REG_USER_MSG("PhotoSpr", -1);
 }
 int gmsgPoints = 0;
 int gmsgWaveState = 0;
@@ -79,3 +83,6 @@ int gmsgGrappleCharge = 0;
 int gmsgTechPts = 0;
 int gmsgMeleeCharges = 0;
 int gmsgSniperScope = 0;
+int gmsgPhotoCap = 0;
+int gmsgPhotoDat = 0;
+int gmsgPhotoSpr = 0;

@@ -120,6 +120,7 @@ xcopy /Y /Q "$(TargetPath)" "D:\.SourceSurge_gld\xash3d-fwgs-win32-i386\sourcesu
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\..\cl_dll\hud_grapplecharge.cpp" />
+    <ClCompile Include="..\..\cl_dll\hud_photo.cpp" />
     <ClCompile Include="..\..\cl_dll\hud_meleecharges.cpp" />
     <ClCompile Include="..\..\cl_dll\hud_points.cpp" />
     <ClCompile Include="..\..\cl_dll\ammo.cpp" />
@@ -228,6 +229,7 @@ xcopy /Y /Q "$(TargetPath)" "D:\.SourceSurge_gld\xash3d-fwgs-win32-i386\sourcesu
     <ClInclude Include="..\..\cl_dll\health.h" />
     <ClInclude Include="..\..\cl_dll\hud.h" />
     <ClInclude Include="..\..\cl_dll\hud_grapplecharge.h" />
+    <ClInclude Include="..\..\cl_dll\hud_photo.h" />
     <ClInclude Include="..\..\cl_dll\hud_meleecharges.h" />
     <ClInclude Include="..\..\cl_dll\hud_scope.h" />
     <ClInclude Include="..\..\cl_dll\hud_spectator.h" />

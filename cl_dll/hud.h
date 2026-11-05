@@ -169,6 +169,7 @@ private:
 #include "health.h"
 #include "hud_speedometer.h"
 #include "hud_timer.h"
+#include "hud_photo.h"
 
 
 #define FADE_TIME 100
@@ -490,6 +491,7 @@ private:
 #include "hud_points.h"
 #include "hud_wavemode.h"
 #include "hud_grapplecharge.h"
+#include "hud_photo.h"
 #include "hud_meleecharges.h"
 #include "hud_scope.h"
 
@@ -593,6 +595,7 @@ public:
 	CHudEditor* m_Editor;
 	CHudWaveMode m_WaveMode;
 	CHudGrappleCharge m_GrappleCharge;
+	CHudPhoto m_Photo;
 	CHudMeleeCharges m_MeleeCharges;
 
 	void Init();
