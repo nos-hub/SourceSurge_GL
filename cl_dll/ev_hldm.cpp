@@ -1104,8 +1104,8 @@ void EV_FireGauss(event_args_t* args)
 //======================
 int g_iSwing;
 
-//Only predict the miss sounds, hit sounds are still played
-//server side, so players don't get the wrong idea.
+// Only predict the miss sounds, hit sounds are still played
+// server side, so players don't get the wrong idea.
 void EV_Crowbar(event_args_t* args)
 {
 	int idx;
@@ -1114,25 +1114,31 @@ void EV_Crowbar(event_args_t* args)
 	idx = args->entindex;
 	VectorCopy(args->origin, origin);
 
-	//Play Swing sound
+	// Play Swing sound
 	gEngfuncs.pEventAPI->EV_PlaySound(idx, origin, CHAN_WEAPON, "weapons/cbar_miss1.wav", 1, ATTN_NORM, 0, PITCH_NORM);
 
 	if (EV_IsLocal(idx))
 	{
-		switch ((g_iSwing++) % 3)
+		if (args->iparam1)
 		{
-		case 0:
-			gEngfuncs.pEventAPI->EV_WeaponAnimation(CROWBAR_ATTACK1MISS, 0);
-			break;
-		case 1:
-			gEngfuncs.pEventAPI->EV_WeaponAnimation(CROWBAR_ATTACK2MISS, 0);
-			break;
-		case 2:
-			gEngfuncs.pEventAPI->EV_WeaponAnimation(CROWBAR_ATTACK3MISS, 0);
-			break;
+			// heavy attack: stab (swap to CROWBAR_STAB_MISS if it looks wrong)
+			gEngfuncs.pEventAPI->EV_WeaponAnimation(CROWBAR_STAB_HIT, 0);
+		}
+		else
+		{
+			switch ((g_iSwing++) % 2)
+			{
+			case 0:
+				gEngfuncs.pEventAPI->EV_WeaponAnimation(CROWBAR_SLASH1, 0);
+				break;
+			case 1:
+				gEngfuncs.pEventAPI->EV_WeaponAnimation(CROWBAR_SLASH2, 0);
+				break;
+			}
 		}
 	}
 }
+
 //======================
 //	   CROWBAR END
 //======================

@@ -525,19 +525,26 @@ private:
 enum crowbar_e
 {
 	CROWBAR_IDLE = 0,
-	CROWBAR_DRAW,
-	CROWBAR_HOLSTER,
-	CROWBAR_ATTACK1HIT,
-	CROWBAR_ATTACK1MISS,
-	CROWBAR_ATTACK2MISS,
-	CROWBAR_ATTACK2HIT,
-	CROWBAR_ATTACK3MISS,
-	CROWBAR_ATTACK3HIT
+	CROWBAR_SLASH1 = 6, // was 1 (try the midslash pair)
+	CROWBAR_SLASH2 = 7, // was 2
+	CROWBAR_DRAW = 3,
+	CROWBAR_STAB_HIT = 4,
+	CROWBAR_STAB_MISS = 5,
+	CROWBAR_MIDSLASH1 = 6,
+	CROWBAR_MIDSLASH2 = 7
 };
+
 
 class CCrowbar : public CBasePlayerWeapon
 {
 public:
+	void WeaponIdle() override; 
+	void SecondaryAttack() override;
+	void HeavyStrike();
+	bool CanBackstab(CBaseEntity* pVictim);
+	void TraceMelee(TraceResult& tr, Vector& vecSrc, Vector& vecEnd);
+	bool m_bHeavySwing;
+
 	void Spawn() override;
 	void Precache() override;
 	int iItemSlot() override { return 1; }

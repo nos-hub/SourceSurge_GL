@@ -337,6 +337,7 @@ xcopy /Y /Q "$(TargetDir)hl.pdb" "D:\.SourceSurge_gld\xash3d-fwgs-win32-i386\sou
     <ClInclude Include="..\..\pm_shared\pm_movevars.h" />
     <ClInclude Include="..\..\pm_shared\pm_shared.h" />
     <ClInclude Include="..\..\public\interface.h" />
+    <ClInclude Include="crowbar.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
