@@ -387,6 +387,7 @@ void CHud::Init()
 	m_Photo.Init();
 	m_MeleeCharges.Init();
 	m_Photo.Init();
+	m_JumpStats.Init();
 	
     // === HUD Editor Registration ===
     // Register the console command
@@ -406,6 +407,10 @@ void CHud::Init()
 	m_Editor->Add(HUD_GRAPPLE_CHARGE,    "GrappleCharge",     0.43f, 0.60f, 140, 24);
 	m_Editor->Add(HUD_TECH_POPUP,		 "TechPopup",		  0.46f, 0.66f, 160, 32);
 	m_Editor->Add(HUD_MELEE_CHARGES,	 "MeleeCharges",	  0.43f, 0.66f, 110, 28);
+	m_Editor->Add(HUD_JS_INFO,			 "JumpInfo",		  0.36f, 0.10f, 320, 48);
+	m_Editor->Add(HUD_JS_GRAPH,			 "StrafeGraph",		  0.37f, 0.20f, 264, 26);
+	m_Editor->Add(HUD_JS_STRAFES,		 "StrafeStats",		  0.60f, 0.50f, 340, 150);
+	m_Editor->Add(HUD_JS_SPEED,			 "JumpSpeed",		  0.50f, 0.78f, 80, 30);
 
     // Load saved layout
     m_Editor->SetProfile("default");
@@ -472,6 +477,7 @@ void CHud::VidInit()
 	m_MeleeCharges.VidInit();
 	m_Scope.VidInit();
 	m_Photo.VidInit();
+	m_JumpStats.VidInit();
 
 	m_scrinfo.iSize = sizeof(m_scrinfo);
 	GetScreenInfo(&m_scrinfo);

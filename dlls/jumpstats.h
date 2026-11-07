@@ -13,6 +13,9 @@ struct physent_s;
 // game.cpp, GameDLLInit(): registers cvars and execs gcljs.cfg
 void JumpStats_Init();
 
+// player.cpp, LinkUserMessages(): registers the "JumpStat" message that feeds the client HUD (hud_jumpstats.cpp)
+void JumpStats_LinkUserMessages();
+
 // client.cpp, ClientPrecache(): precaches the beam sprite
 void JumpStats_Precache();
 

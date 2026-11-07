@@ -6,17 +6,17 @@
 // Jump types:  LJ, CJ / DCJ / MCJ / SCJ, WJ, LDJ (ladder), BH, DBH (duck bhop), SBJ, SLJ
 //              (DD and GS are tracked internally for CJ detection but never printed)
 // Stats:       distance, XJ distance, block distance, edge, land edge, veer, jumpoff angle, airpath,
-//              forward release, sync, prestrafe, max speed, FOG, stamina, height, loss, potency,
+//              forward release, sync, prestrafe, max speed, stamina, height, loss, potency,
 //              overlap / dead air, per strafe table (sync, gain, loss, max, air, OL/DA, efficiency)
-// Output:      chat, console, HUD (jump info, strafe graph, mouse graph, duck graph, strafe table, speed panel),
-//              jump beam and veer beam, for the player and for dead players spectating them.
+// Output:      chat, console, jump beam and veer beam, plus the "JumpStat" user message that feeds the client
+//              HUD (cl_dll/hud_jumpstats.cpp: jump info, strafe graph, strafe table, speed panel).
+//              Everything goes to the player and to dead players spectating them.
 // Failstats:   printed with a "FAILED" prefix.
 //
 // NOT ported:  SQL, sounds / failstat sounds, option menus (console commands instead), weapon speed stats
 //              (that was CS 1.6 only), AMXX config autogeneration (gcljs.cfg is written by gcljs_savedefaults).
 //
 // Chat commands ("say /xxx") and console commands:
-//   /gcspeed       gcljs_gcspeed       toggle the speed panel
 //   /jumpbeam      gcljs_jumpbeam      toggle the jump beam
 //   /veerbeam      gcljs_veerbeam      toggle the veer beam
 //   /gcljs         gcljs_options       list your options. "gcljs_options <option> [value]" changes one
@@ -58,11 +58,7 @@
 
 // 1: chat uses the CS style colour bytes (\x01 \x03 \x04). 0: colour codes are stripped.
 // only turn this on if your client's SayText handler understands them.
-#define JS_CHAT_COLORS 1
-
-// 1: the speed panel uses the director message (like AMXX dhudmessage), no hud channel used, supports 0.02s hold time.
-// 0: falls back to a normal hud message.
-#define JS_USE_DHUD 1
+#define JS_CHAT_COLORS 0
 
 // 1: pev->fuser2 holds a stamina value that should be displayed. 0: never print stamina.
 #define JS_USE_STAMINA 0
@@ -193,22 +189,9 @@ enum JumpBeamColour
 enum OptionType
 {
 	OPT_ENABLE_PLUGIN,
-	OPT_SHOW_SPEED,
-	OPT_SHOW_HUD_GRAPH,
-	OPT_SHOW_HUD_STRAFE_STATS,
-	OPT_SHOW_HUD_JUMP_STATS,
-	OPT_HUD_STATS_VERTICAL,
 	OPT_SHOW_JUMP_BEAM,
 	OPT_SHOW_VEER_BEAM,
 	OPT_CLEAR_HUD_BEAM_ON_TP,
-	OPT_JUMP_INFO_X,
-	OPT_JUMP_INFO_Y,
-	OPT_STRAFE_GRAPH_X,
-	OPT_STRAFE_GRAPH_Y,
-	OPT_STRAFE_STATS_X,
-	OPT_STRAFE_STATS_Y,
-	OPT_SPEED_X,
-	OPT_SPEED_Y,
 	OPT_COUNT
 };
 
@@ -222,24 +205,12 @@ struct OptionDef
 	bool isFloat;
 };
 
+// HUD visibility / position / layout live in the client HUD editor now (hud_edit), not here.
 static const OptionDef g_optionDefs[OPT_COUNT] = {
 	{"gcljs_enable", "1", "Enable plugin", 0, 1, false},
-	{"gcljs_enable_speed", "1", "Show speed", 0, 1, false},
-	{"gcljs_show_hud_graph", "0", "Show graph in HUD", 0, 1, false},
-	{"gcljs_show_hud_strafe_stats", "0", "Show strafe stats in HUD", 0, 1, false},
-	{"gcljs_show_hud_jump_stats", "0", "Show jump stats in HUD", 0, 1, false},
-	{"gcljs_hud_stats_vertical", "0", "Format HUD stats vertically", 0, 1, false},
 	{"gcljs_show_jump_beam", "0", "Show jump beam", 0, 1, false},
 	{"gcljs_show_veer_beam", "0", "Show veer beam", 0, 1, false},
 	{"gcljs_clear_hud_and_beam_on_tp", "0", "Clear HUD & beam on tp", 0, 1, false},
-	{"gcljs_hud_jump_info_x", "-1.0", "Jump info X", -1.0f, 1.0f, true},
-	{"gcljs_hud_jump_info_y", "0.1", "Jump info Y", -1.0f, 1.0f, true},
-	{"gcljs_hud_strafe_graph_x", "-1.0", "Strafe graph X", -1.0f, 1.0f, true},
-	{"gcljs_hud_strafe_graph_y", "0.2", "Strafe graph Y", -1.0f, 1.0f, true},
-	{"gcljs_hud_strafe_stats_x", "0.6", "Strafe stats X", -1.0f, 1.0f, true},
-	{"gcljs_hud_strafe_stats_y", "0.5", "Strafe stats Y", -1.0f, 1.0f, true},
-	{"gcljs_hud_speed_x", "-1.0", "Hud speed X", -1.0f, 1.0f, true},
-	{"gcljs_hud_speed_y", "0.7", "Hud speed Y", -1.0f, 1.0f, true},
 };
 
 struct JsFrame
@@ -266,13 +237,11 @@ struct JsPlayerData
 	int framesInAir;
 	Vec3 angleSpeed;
 	Vec3 lastAngleSpeed;
-	int strafeDir;		// last non-zero yaw turn direction (-1 / 0 / 1)
 	Vec3 lastGroundPos; // last position where the player left the ground.
 	bool lastGroundPosWalkedOff;
 	bool landedDucked;
 
 	bool speedShowPrespeed;
-	int prespeedFog;
 	float prespeedStamina;
 
 	Vec3 jumpGround;
@@ -343,10 +312,6 @@ struct JsHudBeamData
 	JumpBeamColour beamColour[MAX_JUMP_FRAMES];
 	Vec3 veerStart;
 	Vec3 veerEnd;
-	char topString[512];
-	char mleftString[512];
-	char mrightString[512];
-	char strafestatString[512];
 	int timestampMsec;
 };
 
@@ -413,16 +378,16 @@ struct TierDefaults
 
 // tier 0..5 are min distances, the last one is the max distance. MCJ shares the DCJ cvars.
 static const TierDefaults g_tierDefaults[] = {
-	{JUMPTYPE_LJ, "lj", {250, 290, 300, 310, 320, 330, 3800}}, // +~30 base, stronger pre helps a lot
-	{JUMPTYPE_CJ, "cj", {250, 285, 290, 295, 300, 305, 3200}}, // countjumps benefit from higher accel
-	{JUMPTYPE_DCJ, "dcj", {250, 290, 300, 305, 310, 315, 3300}},
-	{JUMPTYPE_SCJ, "scj", {250, 285, 290, 295, 300, 305, 3200}},
-	{JUMPTYPE_WJ, "wj", {250, 290, 300, 305, 310, 315, 3300}},
-	{JUMPTYPE_LDJ, "ldj", {130, 180, 190, 200, 210, 220, 2500}}, // ladder jumps scale more modestly
-	{JUMPTYPE_BH, "bh", {230, 260, 270, 275, 280, 285, 5000}},	// pure bhop chain
-	{JUMPTYPE_DBH, "dbh", {180, 240, 250, 255, 260, 265, 5000}}, // duckbhop – still experimental, these feel fair
-	{JUMPTYPE_SBJ, "sbj", {230, 260, 270, 275, 280, 285, 3000}},
-	{JUMPTYPE_SLJ, "slj", {240, 280, 285, 290, 295, 300, 3200}}, // standup longjump
+	{JUMPTYPE_LJ, "lj", {210, 245, 250, 253, 255, 257, 270}},
+	{JUMPTYPE_CJ, "cj", {220, 253, 257, 263, 267, 270, 280}},
+	{JUMPTYPE_DCJ, "dcj", {220, 255, 265, 268, 272, 275, 285}},
+	{JUMPTYPE_SCJ, "scj", {220, 253, 257, 263, 267, 270, 280}},
+	{JUMPTYPE_WJ, "wj", {220, 255, 265, 268, 272, 275, 285}},
+	{JUMPTYPE_LDJ, "ldj", {110, 160, 170, 175, 185, 190, 220}},
+	{JUMPTYPE_BH, "bh", {200, 230, 235, 240, 243, 246, 260}},
+	{JUMPTYPE_DBH, "dbh", {150, 210, 215, 220, 225, 228, 260}}, // NOTE: idk what good distance for duckbhop are
+	{JUMPTYPE_SBJ, "sbj", {200, 230, 235, 240, 245, 248, 260}},
+	{JUMPTYPE_SLJ, "slj", {210, 247, 252, 255, 257, 259, 280}},
 };
 
 // ------------------------------------------------------------------------------------------------
@@ -558,32 +523,6 @@ static void Append(char* buf, size_t size, const char* fmt, ...)
 	va_start(args, fmt);
 	vsnprintf(buf + len, size - len, fmt, args);
 	va_end(args);
-	buf[size - 1] = 0;
-}
-
-static void ReplaceAll(char* buf, size_t size, const char* from, const char* to)
-{
-	const size_t fromLen = strlen(from);
-	const size_t toLen = strlen(to);
-	if (!fromLen)
-		return;
-	char tmp[1024];
-	size_t o = 0;
-	for (const char* s = buf; *s && o + 1 < sizeof(tmp);)
-	{
-		if (strncmp(s, from, fromLen) == 0)
-		{
-			for (size_t i = 0; i < toLen && o + 1 < sizeof(tmp); i++)
-				tmp[o++] = to[i];
-			s += fromLen;
-		}
-		else
-		{
-			tmp[o++] = *s++;
-		}
-	}
-	tmp[o] = 0;
-	strncpy(buf, tmp, size - 1);
 	buf[size - 1] = 0;
 }
 
@@ -786,67 +725,6 @@ static void ClientAndSpecsPrintConsole(CBasePlayer* p, const char* fmt, ...)
 		{ PrintConsole(t, "%s", text); });
 }
 
-static void ShowHudText(CBasePlayer* target, const char* text, int r, int g, int b, float x, float y, float hold, int channel)
-{
-	hudtextparms_t p;
-	memset(&p, 0, sizeof(p));
-	p.x = x;
-	p.y = y;
-	p.effect = 0;
-	p.r1 = (byte)r;
-	p.g1 = (byte)g;
-	p.b1 = (byte)b;
-	p.a1 = 0;
-	p.r2 = 255;
-	p.g2 = 255;
-	p.b2 = 250;
-	p.a2 = 0;
-	p.fadeinTime = 0.1f;
-	p.fadeoutTime = 0.2f;
-	p.holdTime = hold;
-	p.fxTime = 0.0f;
-	p.channel = channel;
-	UTIL_HudMessage(target, p, text);
-}
-
-static void ClientAndSpecsHudmessage(CBasePlayer* p, const char* text, int r, int g, int b, float x, float y, float hold, int channel)
-{
-	ForPlayerAndSpectators(p, [&](CBasePlayer* t)
-		{ ShowHudText(t, text, r, g, b, x, y, hold, channel); });
-}
-
-static int FloatBits(float f)
-{
-	int i;
-	memcpy(&i, &f, sizeof(i));
-	return i;
-}
-
-// like AMXX's show_dhudmessage: a director message, no hud channel needed.
-static void ShowDHud(CBasePlayer* p, const char* text, int r, int g, int b, float x, float y, float hold)
-{
-#if JS_USE_DHUD
-	char buf[128];
-	snprintf(buf, sizeof(buf), "%s", text);
-
-	MESSAGE_BEGIN(MSG_ONE_UNRELIABLE, SVC_DIRECTOR, NULL, p->edict());
-	WRITE_BYTE((int)strlen(buf) + 31);
-	WRITE_BYTE(6); // DRC_CMD_MESSAGE
-	WRITE_BYTE(0); // effect
-	WRITE_LONG((r << 16) | (g << 8) | b);
-	WRITE_LONG(FloatBits(x));
-	WRITE_LONG(FloatBits(y));
-	WRITE_LONG(FloatBits(0.0f)); // fade in
-	WRITE_LONG(FloatBits(0.0f)); // fade out
-	WRITE_LONG(FloatBits(hold));
-	WRITE_LONG(FloatBits(0.0f)); // fx time
-	WRITE_STRING(buf);
-	MESSAGE_END();
-#else
-	ShowHudText(p, text, r, g, b, x, y, hold, 5);
-#endif
-}
-
 // TE_BEAMPOINTS. Sent unreliable: the plugin sends up to ~100 of these every 0.2 s
 // and reliable messages could overflow the client's reliable channel.
 static void SendBeamPoints(CBasePlayer* p, const Vec3& a, const Vec3& b, int r, int g, int bl, int brightness, int life)
@@ -874,6 +752,191 @@ static void SendBeamPoints(CBasePlayer* p, const Vec3& a, const Vec3& b, int r, 
 }
 
 // ------------------------------------------------------------------------------------------------
+// client HUD message "JumpStat". The client (cl_dll/hud_jumpstats.cpp) formats and draws everything, so the
+// layout is handled by your HUD editor. Messages are variable length (max 192 bytes), so big things are chunked.
+//   INFO     byte 0, byte type, byte flags, byte strafes, byte dir, 7x long (distances), 2x long (speeds),
+//            6x short (sync, loss, potency, jumpoff, height, airtime frac), 4x short (airtime, OL, DA, fwd)
+//   STRAFES  byte 1, byte start, byte count, byte total, then per strafe 4x short, 3x byte, 2x short
+//   GRAPH    byte 2, byte start, byte count, byte total, then one byte per frame: type | mouse << 3 | duck << 5
+//   PRESPEED byte 3, byte show, long prespeed * 100
+//   CLEAR    byte 4
+// ------------------------------------------------------------------------------------------------
+enum JsMsgType
+{
+	JSMSG_INFO = 0,
+	JSMSG_STRAFES = 1,
+	JSMSG_GRAPH = 2,
+	JSMSG_PRESPEED = 3,
+	JSMSG_CLEAR = 4
+};
+
+enum JsInfoFlags
+{
+	JSINFO_FAILED = 1,
+	JSINFO_BLOCK = 2,
+	JSINFO_EDGE = 4,
+	JSINFO_LANDEDGE = 8
+};
+
+static int gmsgJumpStat = 0;
+
+void JumpStats_LinkUserMessages()
+{
+	gmsgJumpStat = REG_USER_MSG("JumpStat", -1);
+}
+
+static int ToFixed(float v, float scale)
+{
+	const float f = v * scale;
+	if (f > 2147483000.0f)
+		return 2147483000;
+	if (f < -2147483000.0f)
+		return -2147483000;
+	return (int)floorf(f + 0.5f);
+}
+
+static int ToShort(float v, float scale)
+{
+	const float f = floorf(v * scale + 0.5f);
+	if (f > 32767.0f)
+		return 32767;
+	if (f < -32768.0f)
+		return -32768;
+	return (int)f;
+}
+
+static inline int ToByte(int v) { return v < 0 ? 0 : (v > 255 ? 255 : v); }
+
+static void SendJumpStatInfo(CBasePlayer* p, const JsPlayerData& pd, int flags)
+{
+	if (!gmsgJumpStat)
+		return;
+
+	ForPlayerAndSpectators(p, [&](CBasePlayer* t)
+		{
+		MESSAGE_BEGIN(MSG_ONE, gmsgJumpStat, NULL, t->edict());
+		WRITE_BYTE(JSMSG_INFO);
+		WRITE_BYTE((int)pd.jumpType);
+		WRITE_BYTE(flags);
+		WRITE_BYTE(ToByte(pd.strafeCount + 1));
+		WRITE_BYTE((int)pd.jumpDir);
+		WRITE_LONG(ToFixed(pd.jumpDistance, 10000.0f));
+		WRITE_LONG(ToFixed(pd.jumpXJDistance, 10000.0f));
+		WRITE_LONG(ToFixed(pd.jumpBlockDist, 1000.0f));
+		WRITE_LONG(ToFixed(pd.jumpEdge, 10000.0f));
+		WRITE_LONG(ToFixed(pd.jumpLandEdge, 10000.0f));
+		WRITE_LONG(ToFixed(pd.jumpVeer, 10000.0f));
+		WRITE_LONG(ToFixed(pd.jumpAirpath, 10000.0f));
+		WRITE_LONG(ToFixed(pd.jumpPrespeed, 100.0f));
+		WRITE_LONG(ToFixed(pd.jumpMaxspeed, 100.0f));
+		WRITE_SHORT(ToShort(pd.jumpSync, 100.0f));
+		WRITE_SHORT(ToShort(pd.jumpLoss, 100.0f));
+		WRITE_SHORT(ToShort(pd.jumpPotency, 100.0f));
+		WRITE_SHORT(ToShort(pd.jumpJumpoffAngle, 100.0f));
+		WRITE_SHORT(ToShort(pd.jumpHeight, 100.0f));
+		WRITE_SHORT(ToShort(pd.jumpAirtimeFrac, 100.0f));
+		WRITE_SHORT(pd.jumpAirtime);
+		WRITE_SHORT(pd.jumpOverlap);
+		WRITE_SHORT(pd.jumpDeadair);
+		WRITE_SHORT(pd.jumpFwdRelease);
+		MESSAGE_END(); });
+}
+
+static void SendJumpStatStrafes(CBasePlayer* p, const JsPlayerData& pd)
+{
+	if (!gmsgJumpStat)
+		return;
+
+	const int total = imin(pd.strafeCount + 1, MAX_STRAFES);
+	const int perMsg = 10;
+	for (int start = 0; start < total; start += perMsg)
+	{
+		const int count = imin(perMsg, total - start);
+		ForPlayerAndSpectators(p, [&](CBasePlayer* t)
+			{
+			MESSAGE_BEGIN(MSG_ONE, gmsgJumpStat, NULL, t->edict());
+			WRITE_BYTE(JSMSG_STRAFES);
+			WRITE_BYTE(start);
+			WRITE_BYTE(count);
+			WRITE_BYTE(total);
+			for (int i = start; i < start + count; i++)
+			{
+				const float peak = pd.strafePeakEfficiency[i] == GC_FLOAT_NEGATIVE_INFINITY ? 0.0f : pd.strafePeakEfficiency[i];
+				WRITE_SHORT(ToShort(pd.strafeSync[i], 10.0f));
+				WRITE_SHORT(ToShort(pd.strafeGain[i], 10.0f));
+				WRITE_SHORT(ToShort(pd.strafeLoss[i], 10.0f));
+				WRITE_SHORT(ToShort(pd.strafeMax[i], 10.0f));
+				WRITE_BYTE(ToByte(pd.strafeAirtime[i]));
+				WRITE_BYTE(ToByte(pd.strafeOverlap[i]));
+				WRITE_BYTE(ToByte(pd.strafeDeadair[i]));
+				WRITE_SHORT(ToShort(pd.strafeAvgEfficiency[i], 1.0f));
+				WRITE_SHORT(ToShort(peak, 1.0f));
+			}
+			MESSAGE_END(); });
+	}
+}
+
+static void SendJumpStatGraph(CBasePlayer* p, const JsPlayerData& pd)
+{
+	if (!gmsgJumpStat)
+		return;
+
+	const int total = imin(pd.jumpAirtime, MAX_JUMP_FRAMES);
+	const int perMsg = 120;
+	for (int start = 0; start < total; start += perMsg)
+	{
+		const int count = imin(perMsg, total - start);
+		ForPlayerAndSpectators(p, [&](CBasePlayer* t)
+			{
+			MESSAGE_BEGIN(MSG_ONE, gmsgJumpStat, NULL, t->edict());
+			WRITE_BYTE(JSMSG_GRAPH);
+			WRITE_BYTE(start);
+			WRITE_BYTE(count);
+			WRITE_BYTE(total);
+			for (int i = start; i < start + count; i++)
+			{
+				// mouse: 0 = none, 1 = yaw increased (turning left), 2 = yaw decreased (turning right)
+				const int mouse = pd.mouseGraph[i] == 0.0f ? 0 : (pd.mouseGraph[i] > 0.0f ? 1 : 2);
+				const int duck = pd.duckGraph[i] ? 1 : 0;
+				WRITE_BYTE((int)pd.strafeGraph[i] | (mouse << 3) | (duck << 5));
+			}
+			MESSAGE_END(); });
+	}
+}
+
+static void SendJumpStatPrespeed(CBasePlayer* p, bool show, float prespeed)
+{
+	if (!gmsgJumpStat || !p)
+		return;
+
+	ForPlayerAndSpectators(p, [&](CBasePlayer* t)
+		{
+		MESSAGE_BEGIN(MSG_ONE, gmsgJumpStat, NULL, t->edict());
+		WRITE_BYTE(JSMSG_PRESPEED);
+		WRITE_BYTE(show ? 1 : 0);
+		WRITE_LONG(ToFixed(prespeed, 100.0f));
+		MESSAGE_END(); });
+}
+
+static void SendJumpStatClear(CBasePlayer* p)
+{
+	if (!gmsgJumpStat || !p)
+		return;
+
+	ForPlayerAndSpectators(p, [&](CBasePlayer* t)
+		{
+		MESSAGE_BEGIN(MSG_ONE, gmsgJumpStat, NULL, t->edict());
+		WRITE_BYTE(JSMSG_CLEAR);
+		MESSAGE_END(); });
+}
+
+// the player data structs live in one array, so the index is the entity index
+static inline CBasePlayer* PlayerOf(const JsPlayerData& pd)
+{
+	return (CBasePlayer*)UTIL_PlayerByIndex((int)(&pd - g_pd));
+}
+
+// ------------------------------------------------------------------------------------------------
 // jump data
 // ------------------------------------------------------------------------------------------------
 static void PDResetJumpData(JsPlayerData& pd)
@@ -896,7 +959,6 @@ static void PDResetJumpData(JsPlayerData& pd)
 	pd.jumpOverlap = 0;
 	pd.jumpDeadair = 0;
 	pd.jumpAirpath = 0.0f;
-	pd.strafeDir = 0;
 
 	pd.strafeCount = 0;
 	for (int i = 0; i < MAX_STRAFES; i++)
@@ -937,15 +999,11 @@ static bool IsWishspeedMovingRight(float forwardspeed, float sidespeed, JumpDir 
 	return forwardspeed < 0.0f; // JUMPDIR_RIGHT
 }
 
-static bool IsNewStrafe(JsPlayerData& pd)
+static bool IsNewStrafe(const JsPlayerData& pd)
 {
+	const int lastSpeed = FSign(pd.lastAngleSpeed.y);
 	const int speed = FSign(pd.angleSpeed.y);
-	if (speed == 0 || pd.jumpAirtime == 1)
-		return false; // no mouse movement this frame: can't start a strafe
-
-	const bool isNew = pd.strafeDir != 0 && speed != pd.strafeDir;
-	pd.strafeDir = speed;
-	return isNew;
+	return ((speed > 0 && lastSpeed <= 0) || (speed < 0 && lastSpeed >= 0)) && pd.jumpAirtime != 1;
 }
 
 static void OnPlayerJumped(JsPlayerData& pd, JumpType jumpType, const JsFrame& fd, const JsFrame& lastFd)
@@ -956,9 +1014,7 @@ static void OnPlayerJumped(JsPlayerData& pd, JumpType jumpType, const JsFrame& f
 
 	pd.trackingJump = g_jumpTypePrintable[jumpType];
 
-	pd.prespeedFog = pd.framesOnGround;
 	pd.prespeedStamina = fd.stamina;
-	pd.speedShowPrespeed = true;
 
 	// start from clean graphs so a short jump never shows the tail of the previous one
 	memset(pd.strafeGraph, 0, sizeof(pd.strafeGraph));
@@ -993,8 +1049,6 @@ static void OnPlayerJumped(JsPlayerData& pd, JumpType jumpType, const JsFrame& f
 	}
 	else
 	{
-		// NOTE: FOG doesn't make sense on ladderjumps
-		pd.prespeedFog = -1;
 		pd.jumpFrame = pd.usercmdCount - 1;
 		pd.jumpPos = lastFd.origin;
 		pd.jumpAngles = lastFd.angles;
@@ -1050,6 +1104,10 @@ static void OnPlayerJumped(JsPlayerData& pd, JumpType jumpType, const JsFrame& f
 			}
 		}
 	}
+
+	// show the prespeed under the speed until we land
+	pd.speedShowPrespeed = true;
+	SendJumpStatPrespeed(PlayerOf(pd), true, pd.jumpPrespeed);
 }
 
 static void FinishTrackingJump(JsPlayerData& pd, const JsFrame& lastFd)
@@ -1228,14 +1286,6 @@ static void PrintStats(CBasePlayer* p, JsPlayerData& pd, JsHudBeamData& hbd, int
 		hasLandEdge = true;
 	}
 
-	char fog[32] = "";
-	bool hasFOG = false;
-	if (pd.prespeedFog <= MAX_BHOP_FRAMES && pd.prespeedFog >= 0)
-	{
-		snprintf(fog, sizeof(fog), "FOG: %i", pd.prespeedFog);
-		hasFOG = true;
-	}
-
 	char stamina[32] = "";
 	bool hasStamina = false;
 #if JS_USE_STAMINA
@@ -1327,10 +1377,8 @@ static void PrintStats(CBasePlayer* p, JsPlayerData& pd, JsHudBeamData& hbd, int
 		ClientAndSpecsPrintConsole(p, "%s", stripped);
 	}
 
-	snprintf(consoleStats, sizeof(consoleStats), "[Jump Direction: %s | %s%sHeight: %.4f%s%s | Loss: %.2f | Potency: %.2f]\n",
+	snprintf(consoleStats, sizeof(consoleStats), "[Jump Direction: %s | Height: %.4f%s%s | Loss: %.2f | Potency: %.2f]\n",
 		g_jumpDirString[pd.jumpDir],
-		fog,
-		hasFOG ? " | " : "",
 		pd.jumpHeight,
 		hasStamina ? " | " : "",
 		stamina,
@@ -1417,62 +1465,20 @@ static void PrintStats(CBasePlayer* p, JsPlayerData& pd, JsHudBeamData& hbd, int
 		Append(duckGraph, sizeof(duckGraph), "%c", pd.duckGraph[i] ? 'C' : g_szStrafeTypeChar[STRAFETYPE_NONE]);
 	}
 
-	snprintf(hbd.topString, sizeof(hbd.topString),
-		"%s%s: %.5f (XJ: %.5f)\n[%s%sPre: %.2f | OL/DA: %i/%i | Jumpoff Angle: %.2f]\n[Airpath: %.4f | Strafes: %i | Loss: %.2f | Potency: %.2f]",
-		pd.failedJump ? "FAILED " : "",
-		g_szJumpTypes[pd.jumpType],
-		pd.jumpDistance,
-		pd.jumpXJDistance,
-		block,
-		hasBlock ? " | " : "",
-		pd.jumpPrespeed,
-		pd.jumpOverlap,
-		pd.jumpDeadair,
-		pd.jumpJumpoffAngle,
-		pd.jumpAirpath,
-		pd.strafeCount + 1,
-		pd.jumpLoss,
-		pd.jumpPotency);
-
-	if (GetOptionInt(client, OPT_HUD_STATS_VERTICAL))
+	// ---- client HUD
 	{
-		ReplaceAll(hbd.topString, sizeof(hbd.topString), " | ", "\n");
-		ReplaceAll(hbd.topString, sizeof(hbd.topString), "[", "");
-		ReplaceAll(hbd.topString, sizeof(hbd.topString), "]", "");
-	}
-
-	// hud messages have a max character limit of ~68, until the line wraps.
-	// cut off the start of the hud message for a max of 68 characters per line
-	// NOTE: first 3 chars are used up by "..."
-	int startChar = pd.jumpAirtime - 65;
-	if (startChar < 0)
-		startChar = 0;
-	if (startChar > HUD_GRAPH_MAX_CHARS - 1)
-		startChar = HUD_GRAPH_MAX_CHARS - 1;
-	if (startChar > graphLen)
-		startChar = graphLen;
-	const char* ellipsis = startChar != 0 ? "..." : "";
-
-	snprintf(hbd.mleftString, sizeof(hbd.mleftString), "%s%s\n%s%s", ellipsis, moveLeftGraph + startChar, ellipsis, mouseGraphLeft + startChar);
-	snprintf(hbd.mrightString, sizeof(hbd.mrightString), "%s%s\n%s%s\n%s%s", ellipsis, moveRightGraph + startChar, ellipsis, mouseGraphRight + startChar, ellipsis, duckGraph + startChar);
-
-	snprintf(hbd.strafestatString, sizeof(hbd.strafestatString), "X. Sync Gain Loss Max Air OL/DA AvgEff (MaxEff)\n");
-	for (int strafe = 0; strafe <= pd.strafeCount && strafe < MAX_STRAFES; strafe++)
-	{
-		const float peak = pd.strafePeakEfficiency[strafe] == GC_FLOAT_NEGATIVE_INFINITY ? 0.0f : pd.strafePeakEfficiency[strafe];
-		Append(hbd.strafestatString, sizeof(hbd.strafestatString), "%i. %4.0f%% %4.0f %5.1f %4.0f %3i %i/%i %3i%% (%i%%)\n",
-			strafe + 1,
-			pd.strafeSync[strafe],
-			pd.strafeGain[strafe],
-			pd.strafeLoss[strafe],
-			pd.strafeMax[strafe],
-			pd.strafeAirtime[strafe],
-			pd.strafeOverlap[strafe],
-			pd.strafeDeadair[strafe],
-			iround(pd.strafeAvgEfficiency[strafe]),
-			iround(peak));
-		if (strlen(hbd.strafestatString) >= sizeof(hbd.strafestatString) - 2)
-			break;
+		int flags = 0;
+		if (pd.failedJump)
+			flags |= JSINFO_FAILED;
+		if (hasBlock)
+			flags |= JSINFO_BLOCK;
+		if (hasEdge)
+			flags |= JSINFO_EDGE;
+		if (hasLandEdge)
+			flags |= JSINFO_LANDEDGE;
+		SendJumpStatInfo(p, pd, flags);
+		SendJumpStatStrafes(p, pd);
+		SendJumpStatGraph(p, pd);
 	}
 
 	hbd.timestampMsec = pd.timeMsec;
@@ -1548,7 +1554,7 @@ static void SaveReplay(CBasePlayer* p, int client, const JsPlayerData& pd)
 	wv(pd.lastGroundPos);
 	wi(pd.lastGroundPosWalkedOff);
 	wi(pd.landedDucked);
-	wi(pd.prespeedFog);
+	wi(-1); // FOG (removed)
 	wf(pd.prespeedStamina);
 	wv(pd.jumpPos);
 	wv(pd.jumpAngles);
@@ -1640,7 +1646,11 @@ static void OnPlayerFailstat(CBasePlayer* p, int client, JsPlayerData& pd)
 
 static void OnPlayerLanded(CBasePlayer* p, int client, JsPlayerData& pd, const JsFrame& fd, const JsFrame& lastFd)
 {
-	pd.speedShowPrespeed = false;
+	if (pd.speedShowPrespeed)
+	{
+		pd.speedShowPrespeed = false;
+		SendJumpStatPrespeed(p, false, pd.jumpPrespeed);
+	}
 	pd.landedDucked = (fd.flags & FL_DUCKING) != 0;
 
 	if (!pd.trackingJump || pd.jumpType == JUMPTYPE_NONE || !g_jumpTypePrintable[pd.jumpType])
@@ -1788,18 +1798,9 @@ static void TrackJump(CBasePlayer* p, int client, JsPlayerData& pd, const JsFram
 		isValidFallAccel = true;
 	}
 
-		// crusty teleport detection
+	// crusty teleport detection
 	{
-		// ducking / unducking in the air shifts the feet position by 18 units, that's not a teleport
-		Vec3 lastOrigin = lastFd.origin;
-		const bool lastDucking = (lastFd.flags & FL_DUCKING) != 0;
-		const bool ducking = (fd.flags & FL_DUCKING) != 0;
-		if (!lastDucking && ducking)
-			lastOrigin.z += GC_DUCK_HEIGHT_CHANGE;
-		else if (lastDucking && !ducking)
-			lastOrigin.z -= GC_DUCK_HEIGHT_CHANGE;
-
-		const Vec3 posDelta = fd.origin - lastOrigin;
+		const Vec3 posDelta = fd.origin - lastFd.origin;
 		const float moveLength = sqrtf(posDelta.x * posDelta.x + posDelta.y * posDelta.y + posDelta.z * posDelta.z);
 		// maxvelocity * ~vectorlen(1, 1, 1)
 		const float maxMoveDistance = CVAR_GET_FLOAT("sv_maxvelocity") * 1.74f;
@@ -1808,7 +1809,10 @@ static void TrackJump(CBasePlayer* p, int client, JsPlayerData& pd, const JsFram
 			JS_DEBUG_PRINT(p, "jump invalidated: movelength %f frametime %f\n", moveLength, frametime);
 			PDResetJumpData(pd);
 			if (GetOptionInt(client, OPT_CLEAR_HUD_BEAM_ON_TP) != 0)
+			{
 				g_hbd[client].timestampMsec = -100000;
+				SendJumpStatClear(p);
+			}
 			pd.trackingJump = false;
 		}
 	}
@@ -1827,10 +1831,8 @@ static void TrackJump(CBasePlayer* p, int client, JsPlayerData& pd, const JsFram
 	else if (pd.jumpAirtime < 10 && pd.framesOnGround)
 		pd.trackingJump = false;
 
-		if (!pd.trackingJump)
+	if (!pd.trackingJump)
 	{
-		JS_DEBUG_PRINT(p, "tracking stopped: type %s gravity %f fallAccelOk %i movetype %i airtime %i onground %i\n",
-			g_szJumpTypes[pd.jumpType], playerGravity, (int)isValidFallAccel, fd.movetype, pd.jumpAirtime, pd.framesOnGround);
 		PDResetJumpData(pd);
 		return;
 	}
@@ -2253,10 +2255,15 @@ void JumpStats_PostThink(CBasePlayer* p)
 		// reset when player isn't alive to avoid discontinuity
 		g_replayCount[client] = 0;
 		g_replayIndex[client] = 0;
+		if (g_pd[client].speedShowPrespeed)
+		{
+			g_pd[client].speedShowPrespeed = false;
+			SendJumpStatPrespeed(p, false, 0.0f);
+		}
 		return;
 	}
 
-	if (!GetOptionInt(client, OPT_ENABLE_PLUGIN) && !GetOptionInt(client, OPT_SHOW_SPEED))
+	if (!GetOptionInt(client, OPT_ENABLE_PLUGIN))
 		return;
 
 	JsPlayerData& pd = g_pd[client];
@@ -2304,21 +2311,6 @@ void JumpStats_PostThink(CBasePlayer* p)
 		pd.framesOnGround = 0;
 	}
 
-	if (GetOptionInt(client, OPT_SHOW_SPEED))
-	{
-		const float speed = LengthXY(fd.velocity);
-		char speedText[128];
-		snprintf(speedText, sizeof(speedText), "%.2f", speed);
-		if (pd.speedShowPrespeed)
-		{
-			if (pd.prespeedFog <= MAX_BHOP_FRAMES && pd.prespeedFog >= 0)
-				Append(speedText, sizeof(speedText), "\n(%.2f)\nFOG: %i", pd.jumpPrespeed, pd.prespeedFog);
-			else
-				Append(speedText, sizeof(speedText), "\n(%.2f)", pd.jumpPrespeed);
-		}
-		ShowDHud(p, speedText, 255, 255, 255, GetOptionFloat(client, OPT_SPEED_X), GetOptionFloat(client, OPT_SPEED_Y), 0.02f);
-	}
-
 	// LJ stuff
 	if (!GetOptionInt(client, OPT_ENABLE_PLUGIN))
 		return;
@@ -2344,29 +2336,10 @@ void JumpStats_PostThink(CBasePlayer* p)
 	if (pd.framesOnGround == 1)
 		OnPlayerLanded(p, client, pd, fd, lastFd);
 
-	// ---- hud and beams
+	// ---- beams
 	JsHudBeamData& hbd = g_hbd[client];
-	const int modulo = pd.usercmdCount % 20;
+	const int modulo = pd.usercmdCount % 20; // beams are refreshed every 20 usercmds
 	const float elapsed = (float)(pd.timeMsec - hbd.timestampMsec) / 1000.0f;
-	if (elapsed < 3.0f)
-	{
-		const float strafeGraphX = GetOptionFloat(client, OPT_STRAFE_GRAPH_X);
-		const float strafeGraphY = GetOptionFloat(client, OPT_STRAFE_GRAPH_Y);
-		const float time = 2.0f;
-		const bool showHudGraph = GetOptionInt(client, OPT_SHOW_HUD_GRAPH) != 0;
-		const bool showHudStrafeStats = GetOptionInt(client, OPT_SHOW_HUD_STRAFE_STATS) != 0;
-		const bool showHudJumpStats = GetOptionInt(client, OPT_SHOW_HUD_JUMP_STATS) != 0;
-
-		if (modulo == 0 && showHudJumpStats)
-			ClientAndSpecsHudmessage(p, hbd.topString, 255, 255, 255, GetOptionFloat(client, OPT_JUMP_INFO_X), GetOptionFloat(client, OPT_JUMP_INFO_Y), time, 1);
-		else if (modulo == 5 && showHudGraph)
-			ClientAndSpecsHudmessage(p, hbd.mleftString, 255, 0, 0, strafeGraphX, strafeGraphY, time, 2);
-		else if (modulo == 10 && showHudGraph)
-			ClientAndSpecsHudmessage(p, hbd.mrightString, 0, 255, 255, strafeGraphX, strafeGraphY, time, 3);
-		else if (modulo == 15 && showHudStrafeStats)
-			ClientAndSpecsHudmessage(p, hbd.strafestatString, 0, 255, 255, GetOptionFloat(client, OPT_STRAFE_STATS_X), GetOptionFloat(client, OPT_STRAFE_STATS_Y), time, 4);
-	}
-
 	if (elapsed < 10.0f && modulo == 0)
 	{
 		const int life = 2;
@@ -2441,8 +2414,17 @@ void JumpStats_Reset(CBasePlayer* p)
 	g_replayCount[client] = 0;
 	g_replayIndex[client] = 0;
 
+	if (pd.speedShowPrespeed)
+	{
+		pd.speedShowPrespeed = false;
+		SendJumpStatPrespeed(p, false, 0.0f);
+	}
+
 	if (GetOptionInt(client, OPT_CLEAR_HUD_BEAM_ON_TP))
+	{
 		g_hbd[client].timestampMsec = -100000;
+		SendJumpStatClear(p);
+	}
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -2451,7 +2433,6 @@ void JumpStats_Reset(CBasePlayer* p)
 enum CommandId
 {
 	CMD_NONE,
-	CMD_SPEED,
 	CMD_JUMPBEAM,
 	CMD_VEERBEAM,
 	CMD_OPTIONS,
@@ -2468,7 +2449,6 @@ struct CommandDef
 };
 
 static const CommandDef g_commands[] = {
-	{"gcspeed", "gcljs_gcspeed", CMD_SPEED},
 	{"jumpbeam", "gcljs_jumpbeam", CMD_JUMPBEAM},
 	{"veerbeam", "gcljs_veerbeam", CMD_VEERBEAM},
 	{"gcljs", "gcljs_options", CMD_OPTIONS},
@@ -2677,9 +2657,6 @@ bool JumpStats_Command(CBasePlayer* p, const char* pcmd)
 
 	switch (id)
 	{
-	case CMD_SPEED:
-		g_options[client][OPT_SHOW_SPEED] = GetOptionInt(client, OPT_SHOW_SPEED) ? 0.0f : 1.0f;
-		break;
 	case CMD_JUMPBEAM:
 		g_options[client][OPT_SHOW_JUMP_BEAM] = GetOptionInt(client, OPT_SHOW_JUMP_BEAM) ? 0.0f : 1.0f;
 		break;

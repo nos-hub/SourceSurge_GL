@@ -3065,6 +3065,8 @@ void CBasePlayer::Precache()
 	// Make sure any necessary user messages have been registered
 	LinkUserMessages();
 
+	JumpStats_LinkUserMessages();
+
 	m_iUpdateTime = 5; // won't update for 1/2 a second
 
 	if (gInitHUD)
