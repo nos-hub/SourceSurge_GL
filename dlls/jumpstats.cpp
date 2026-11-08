@@ -18,6 +18,8 @@
 //
 // Chat commands ("say /xxx") and console commands:
 //   /jumpbeam      gcljs_jumpbeam      toggle the jump beam
+//   /jumpchat      gcljs_chat          toggle the jump stats in chat (and the chat sound that comes with them)
+//   /jumpfails     gcljs_fails         toggle printing failed jumps (chat, console, HUD)
 //   /veerbeam      gcljs_veerbeam      toggle the veer beam
 //   /gcljs         gcljs_options       list your options. "gcljs_options <option> [value]" changes one
 //   /gcljsversion  gcljs_version       print the version
@@ -192,6 +194,8 @@ enum OptionType
 	OPT_SHOW_JUMP_BEAM,
 	OPT_SHOW_VEER_BEAM,
 	OPT_CLEAR_HUD_BEAM_ON_TP,
+	OPT_SHOW_CHAT,
+	OPT_SHOW_FAILS,
 	OPT_COUNT
 };
 
@@ -211,6 +215,8 @@ static const OptionDef g_optionDefs[OPT_COUNT] = {
 	{"gcljs_show_jump_beam", "0", "Show jump beam", 0, 1, false},
 	{"gcljs_show_veer_beam", "0", "Show veer beam", 0, 1, false},
 	{"gcljs_clear_hud_and_beam_on_tp", "0", "Clear HUD & beam on tp", 0, 1, false},
+	{"gcljs_show_chat", "0", "Jump stats in chat (and the chat sound)", 0, 1, false},
+	{"gcljs_show_fails", "0", "Failed jump stats", 0, 1, false},
 };
 
 struct JsFrame
@@ -237,6 +243,7 @@ struct JsPlayerData
 	int framesInAir;
 	Vec3 angleSpeed;
 	Vec3 lastAngleSpeed;
+	int lastYawDir;		// -1 / 1: direction the view last turned in during this jump, 0: hasn't turned yet
 	Vec3 lastGroundPos; // last position where the player left the ground.
 	bool lastGroundPosWalkedOff;
 	bool landedDucked;
@@ -376,18 +383,20 @@ struct TierDefaults
 	float d[JUMPTIER_COUNT];
 };
 
-// tier 0..5 are min distances, the last one is the max distance. MCJ shares the DCJ cvars.
+// tier 0..5 are min distances, the last one is the max distance (a sanity cap). MCJ shares the DCJ cvars.
+// The original values were tuned for a 250 u/s base speed (CS 1.6). These are scaled by 320 / 250 for the HL1
+// base speed, and the max is 1000 so fast jumps are never thrown away. Tune them with the gcljs_*_dist cvars.
 static const TierDefaults g_tierDefaults[] = {
-	{JUMPTYPE_LJ, "lj", {210, 245, 250, 253, 255, 257, 270}},
-	{JUMPTYPE_CJ, "cj", {220, 253, 257, 263, 267, 270, 280}},
-	{JUMPTYPE_DCJ, "dcj", {220, 255, 265, 268, 272, 275, 285}},
-	{JUMPTYPE_SCJ, "scj", {220, 253, 257, 263, 267, 270, 280}},
-	{JUMPTYPE_WJ, "wj", {220, 255, 265, 268, 272, 275, 285}},
-	{JUMPTYPE_LDJ, "ldj", {110, 160, 170, 175, 185, 190, 220}},
-	{JUMPTYPE_BH, "bh", {200, 230, 235, 240, 243, 246, 260}},
-	{JUMPTYPE_DBH, "dbh", {150, 210, 215, 220, 225, 228, 260}}, // NOTE: idk what good distance for duckbhop are
-	{JUMPTYPE_SBJ, "sbj", {200, 230, 235, 240, 245, 248, 260}},
-	{JUMPTYPE_SLJ, "slj", {210, 247, 252, 255, 257, 259, 280}},
+	{JUMPTYPE_LJ, "lj", {269, 314, 320, 324, 326, 329, 1000}},
+	{JUMPTYPE_CJ, "cj", {282, 324, 329, 337, 342, 346, 1000}},
+	{JUMPTYPE_DCJ, "dcj", {282, 326, 339, 343, 348, 352, 1000}},
+	{JUMPTYPE_SCJ, "scj", {282, 324, 329, 337, 342, 346, 1000}},
+	{JUMPTYPE_WJ, "wj", {282, 326, 339, 343, 348, 352, 1000}},
+	{JUMPTYPE_LDJ, "ldj", {141, 205, 218, 224, 237, 243, 1000}},
+	{JUMPTYPE_BH, "bh", {256, 294, 301, 307, 311, 315, 1000}},
+	{JUMPTYPE_DBH, "dbh", {192, 269, 275, 282, 288, 292, 1000}},
+	{JUMPTYPE_SBJ, "sbj", {256, 294, 301, 307, 314, 317, 1000}},
+	{JUMPTYPE_SLJ, "slj", {269, 316, 323, 326, 329, 332, 1000}},
 };
 
 // ------------------------------------------------------------------------------------------------
@@ -711,7 +720,11 @@ static void ForPlayerAndSpectators(CBasePlayer* p, F fn)
 static void ClientAndSpecsPrintChat(CBasePlayer* p, const char* text)
 {
 	ForPlayerAndSpectators(p, [&](CBasePlayer* t)
-		{ PrintChat(t, text); });
+		{
+		const int idx = t->entindex();
+		if (idx >= 1 && idx < GC_MAX_PLAYERS && !GetOptionInt(idx, OPT_SHOW_CHAT))
+			return;
+		PrintChat(t, text); });
 }
 
 static void ClientAndSpecsPrintConsole(CBasePlayer* p, const char* fmt, ...)
@@ -946,6 +959,7 @@ static void PDResetJumpData(JsPlayerData& pd)
 	pd.landPos = Vec3();
 	pd.trackingJump = false;
 	pd.failedJump = false;
+	pd.lastYawDir = 0;
 
 	// NOTE: don't reset jumpType or lastJumpType
 	pd.jumpMaxspeed = 0.0f;
@@ -999,11 +1013,24 @@ static bool IsWishspeedMovingRight(float forwardspeed, float sidespeed, JumpDir 
 	return forwardspeed < 0.0f; // JUMPDIR_RIGHT
 }
 
-static bool IsNewStrafe(const JsPlayerData& pd)
+// Yaw changes smaller than this are mouse / float noise, not a turn.
+static const float GC_MIN_YAW_DELTA = 0.005f;
+
+// A new strafe starts when the view turns the opposite way to the last time it turned.
+// Frames where the view didn't turn at all are ignored: at 200 fps the mouse is polled less often than the game
+// runs, so many frames have a yaw delta of exactly 0, and counting each pause as a new strafe gives lots of
+// fake strafes with 0 sync and 0 gain.
+// Must be called once per tracked frame.
+static bool UpdateYawDirection(JsPlayerData& pd)
 {
-	const int lastSpeed = FSign(pd.lastAngleSpeed.y);
-	const int speed = FSign(pd.angleSpeed.y);
-	return ((speed > 0 && lastSpeed <= 0) || (speed < 0 && lastSpeed >= 0)) && pd.jumpAirtime != 1;
+	const float yawDelta = pd.angleSpeed.y;
+	const int dir = fabsf(yawDelta) < GC_MIN_YAW_DELTA ? 0 : FSign(yawDelta);
+	if (dir == 0)
+		return false;
+
+	const bool newStrafe = pd.lastYawDir != 0 && dir != pd.lastYawDir;
+	pd.lastYawDir = dir;
+	return newStrafe;
 }
 
 static void OnPlayerJumped(JsPlayerData& pd, JumpType jumpType, const JsFrame& fd, const JsFrame& lastFd)
@@ -1110,6 +1137,43 @@ static void OnPlayerJumped(JsPlayerData& pd, JumpType jumpType, const JsFrame& f
 	SendJumpStatPrespeed(PlayerOf(pd), true, pd.jumpPrespeed);
 }
 
+// Drops strafes that did nothing: no gain, no loss and no sync (turning the view or holding keys without any effect
+// on the speed, like the stretch before the first real strafe, or a few frames right before landing).
+// The remaining strafes are renumbered, and the first one starts at the takeoff so the strafe distances still add
+// up to the whole jump. Strafes that only lose speed are kept, that's information.
+static void DiscardEmptyStrafes(JsPlayerData& pd)
+{
+	const int total = imin(pd.strafeCount + 1, MAX_STRAFES);
+	int kept = 0;
+	for (int i = 0; i < total; i++)
+	{
+		if (pd.strafeSync[i] == 0.0f && pd.strafeGain[i] == 0.0f && pd.strafeLoss[i] == 0.0f)
+			continue;
+
+		if (kept != i)
+		{
+			pd.strafeSync[kept] = pd.strafeSync[i];
+			pd.strafeGain[kept] = pd.strafeGain[i];
+			pd.strafeLoss[kept] = pd.strafeLoss[i];
+			pd.strafeMax[kept] = pd.strafeMax[i];
+			pd.strafeFrame[kept] = pd.strafeFrame[i];
+			pd.strafeAirtime[kept] = pd.strafeAirtime[i];
+			pd.strafeOverlap[kept] = pd.strafeOverlap[i];
+			pd.strafeDeadair[kept] = pd.strafeDeadair[i];
+			pd.strafeAvgGain[kept] = pd.strafeAvgGain[i];
+			pd.strafeAvgEfficiency[kept] = pd.strafeAvgEfficiency[i];
+			pd.strafePeakEfficiency[kept] = pd.strafePeakEfficiency[i];
+		}
+		kept++;
+	}
+
+	if (kept == 0)
+		return; // nothing did anything (a jump without strafing): keep the table as it is
+
+	pd.strafeCount = kept - 1;
+	pd.strafeFrame[0] = 0;
+}
+
 static void FinishTrackingJump(JsPlayerData& pd, const JsFrame& lastFd)
 {
 	// finish up stats:
@@ -1137,6 +1201,8 @@ static void FinishTrackingJump(JsPlayerData& pd, const JsFrame& lastFd)
 			pd.strafeSync[strafe] = 0.0f;
 		}
 	}
+
+	DiscardEmptyStrafes(pd);
 
 	// airpath!
 	{
@@ -1338,6 +1404,8 @@ static void PrintStats(CBasePlayer* p, JsPlayerData& pd, JsHudBeamData& hbd, int
 			CBasePlayer* pOther = (CBasePlayer*)UTIL_PlayerByIndex(i);
 			if (!pOther || pOther == p || !pOther->IsPlayer() || (pOther->pev->flags & FL_FAKECLIENT))
 				continue;
+			if (!GetOptionInt(i, OPT_SHOW_CHAT))
+				continue;
 			PrintChat(pOther, chatStatsAll);
 		}
 	}
@@ -1386,7 +1454,7 @@ static void PrintStats(CBasePlayer* p, JsPlayerData& pd, JsHudBeamData& hbd, int
 		pd.jumpPotency);
 	ClientAndSpecsPrintConsole(p, "%s", consoleStats);
 
-	ClientAndSpecsPrintConsole(p, "\n #.  Sync   Gain   Loss  Max   Air  OL/DA AvgGain Distance  AvgEff%% (MaxEff%%)\n");
+	ClientAndSpecsPrintConsole(p, "\n #.  Sync   Gain   Loss  Max   Air  OL/DA AvgGain Distance  AvgEff (MaxEff)   (Sync, AvgEff and MaxEff are in percent)\n");
 	for (int strafe = 0; strafe <= pd.strafeCount && strafe < MAX_STRAFES; strafe++)
 	{
 		JsFrame nextStrafeFd;
@@ -1406,11 +1474,14 @@ static void PrintStats(CBasePlayer* p, JsPlayerData& pd, JsHudBeamData& hbd, int
 			jumpNormal = jumpNormal * (1.0f / jnLen);
 
 		const float dot = jumpNormal.x * strafeOffset.x + jumpNormal.y * strafeOffset.y + jumpNormal.z * strafeOffset.z;
-		const float strafeDistance = pd.strafeAirtime[strafe] ? dot / (float)pd.strafeAirtime[strafe] : 0.0f;
+		// divide by the frames this row covers (it also covers the dead strafes that were folded into it)
+		const int endFrame = (strafe < pd.strafeCount && strafe + 1 < MAX_STRAFES) ? pd.strafeFrame[strafe + 1] : pd.jumpAirtime;
+		const int span = endFrame - pd.strafeFrame[strafe];
+		const float strafeDistance = span > 0 ? dot / (float)span : 0.0f;
 
 		const float peak = pd.strafePeakEfficiency[strafe] == GC_FLOAT_NEGATIVE_INFINITY ? 0.0f : pd.strafePeakEfficiency[strafe];
 
-		ClientAndSpecsPrintConsole(p, "%2i. %5.1f%% %6.2f %6.2f  %5.1f %3i %2i/%-2i    %3.2f      %-5.2f   %3i%% (%i%%)\n",
+		ClientAndSpecsPrintConsole(p, "%2i. %5.1f %6.2f %6.2f  %5.1f %3i %2i/%-2i    %3.2f      %-5.2f   %3i (%i)\n",
 			strafe + 1,
 			pd.strafeSync[strafe],
 			pd.strafeGain[strafe],
@@ -1639,8 +1710,11 @@ static void OnPlayerFailstat(CBasePlayer* p, int client, JsPlayerData& pd)
 		pd.jumpXJDistance += 32.0f;
 	}
 
-	FinishTrackingJump(pd, lastFd);
-	PrintStats(p, pd, g_hbd[client], client);
+	if (GetOptionInt(client, OPT_SHOW_FAILS))
+	{
+		FinishTrackingJump(pd, lastFd);
+		PrintStats(p, pd, g_hbd[client], client);
+	}
 	PDResetJumpData(pd);
 }
 
@@ -1800,7 +1874,17 @@ static void TrackJump(CBasePlayer* p, int client, JsPlayerData& pd, const JsFram
 
 	// crusty teleport detection
 	{
-		const Vec3 posDelta = fd.origin - lastFd.origin;
+		// Ducking / unducking in the air moves the hull bottom (our "feet" position) by 18 units in a single frame.
+		// At 200 fps that is more than the limit below, so take it out of the movement first.
+		Vec3 lastPos = lastFd.origin;
+		const bool lastIsDucking = (lastFd.flags & FL_DUCKING) != 0;
+		const bool isDucking = (fd.flags & FL_DUCKING) != 0;
+		if (!lastIsDucking && isDucking)
+			lastPos.z += GC_DUCK_HEIGHT_CHANGE;
+		else if (lastIsDucking && !isDucking)
+			lastPos.z -= GC_DUCK_HEIGHT_CHANGE;
+
+		const Vec3 posDelta = fd.origin - lastPos;
 		const float moveLength = sqrtf(posDelta.x * posDelta.x + posDelta.y * posDelta.y + posDelta.z * posDelta.z);
 		// maxvelocity * ~vectorlen(1, 1, 1)
 		const float maxMoveDistance = CVAR_GET_FLOAT("sv_maxvelocity") * 1.74f;
@@ -1865,9 +1949,10 @@ static void TrackJump(CBasePlayer* p, int client, JsPlayerData& pd, const JsFram
 		pd.jumpDeadair++;
 
 	// strafestats!
+	const bool newStrafe = UpdateYawDirection(pd);
 	if (pd.strafeCount + 1 < MAX_STRAFES)
 	{
-		if (IsNewStrafe(pd))
+		if (newStrafe)
 		{
 			pd.strafeCount++;
 			pd.strafeFrame[pd.strafeCount] = frameIndex;
@@ -2435,6 +2520,8 @@ enum CommandId
 	CMD_NONE,
 	CMD_JUMPBEAM,
 	CMD_VEERBEAM,
+	CMD_CHAT,
+	CMD_FAILS,
 	CMD_OPTIONS,
 	CMD_VERSION,
 	CMD_SAVEDEFAULTS,
@@ -2451,6 +2538,8 @@ struct CommandDef
 static const CommandDef g_commands[] = {
 	{"jumpbeam", "gcljs_jumpbeam", CMD_JUMPBEAM},
 	{"veerbeam", "gcljs_veerbeam", CMD_VEERBEAM},
+	{"jumpchat", "gcljs_chat", CMD_CHAT},
+	{"jumpfails", "gcljs_fails", CMD_FAILS},
 	{"gcljs", "gcljs_options", CMD_OPTIONS},
 	{"gcljsversion", "gcljs_version", CMD_VERSION},
 	{"gcljs_savedefaults", "gcljs_savedefaults", CMD_SAVEDEFAULTS},
@@ -2662,6 +2751,15 @@ bool JumpStats_Command(CBasePlayer* p, const char* pcmd)
 		break;
 	case CMD_VEERBEAM:
 		g_options[client][OPT_SHOW_VEER_BEAM] = GetOptionInt(client, OPT_SHOW_VEER_BEAM) ? 0.0f : 1.0f;
+		break;
+	case CMD_CHAT:
+		g_options[client][OPT_SHOW_CHAT] = GetOptionInt(client, OPT_SHOW_CHAT) ? 0.0f : 1.0f;
+		// answer in the console, the chat might just have been turned off
+		PrintConsole(p, "[GC] Jump stats in chat: %s\n", GetOptionInt(client, OPT_SHOW_CHAT) ? "ON" : "OFF");
+		break;
+	case CMD_FAILS:
+		g_options[client][OPT_SHOW_FAILS] = GetOptionInt(client, OPT_SHOW_FAILS) ? 0.0f : 1.0f;
+		PrintConsole(p, "[GC] Failed jump stats: %s\n", GetOptionInt(client, OPT_SHOW_FAILS) ? "ON" : "OFF");
 		break;
 	case CMD_OPTIONS:
 		HandleOptions(p, client, argc, argv);

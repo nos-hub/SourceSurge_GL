@@ -388,6 +388,8 @@ void CHud::Init()
 	m_MeleeCharges.Init();
 	m_Photo.Init();
 	m_JumpStats.Init();
+	m_EdgeBug.Init();
+
 	
     // === HUD Editor Registration ===
     // Register the console command
@@ -411,6 +413,7 @@ void CHud::Init()
 	m_Editor->Add(HUD_JS_GRAPH,			 "StrafeGraph",		  0.37f, 0.20f, 264, 26);
 	m_Editor->Add(HUD_JS_STRAFES,		 "StrafeStats",		  0.60f, 0.50f, 340, 150);
 	m_Editor->Add(HUD_JS_SPEED,			 "JumpSpeed",		  0.50f, 0.78f, 80, 30);
+	m_Editor->Add(HUD_EDGEBUG,			 "EdgeBug",			  0.43f, 0.62f, 220, 78);
 
     // Load saved layout
     m_Editor->SetProfile("default");
@@ -478,6 +481,7 @@ void CHud::VidInit()
 	m_Scope.VidInit();
 	m_Photo.VidInit();
 	m_JumpStats.VidInit();
+	m_EdgeBug.VidInit();
 
 	m_scrinfo.iSize = sizeof(m_scrinfo);
 	GetScreenInfo(&m_scrinfo);

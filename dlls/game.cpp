@@ -20,6 +20,7 @@
 #include "filesystem_utils.h"
 #include "wave.h"
 #include "jumpstats.h"
+#include "edgebug.h"
 
 
 cvar_t displaysoundlist = {"displaysoundlist", "0"};

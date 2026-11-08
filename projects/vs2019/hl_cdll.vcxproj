@@ -119,6 +119,7 @@ xcopy /Y /Q "$(TargetPath)" "D:\.SourceSurge_gld\xash3d-fwgs-win32-i386\sourcesu
     <PostBuildEvent />
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\..\cl_dll\hud_edgebug.cpp" />
     <ClCompile Include="..\..\cl_dll\hud_grapplecharge.cpp" />
     <ClCompile Include="..\..\cl_dll\hud_jumpstats.cpp" />
     <ClCompile Include="..\..\cl_dll\hud_photo.cpp" />
@@ -229,6 +230,7 @@ xcopy /Y /Q "$(TargetPath)" "D:\.SourceSurge_gld\xash3d-fwgs-win32-i386\sourcesu
     <ClInclude Include="..\..\cl_dll\GameStudioModelRenderer.h" />
     <ClInclude Include="..\..\cl_dll\health.h" />
     <ClInclude Include="..\..\cl_dll\hud.h" />
+    <ClInclude Include="..\..\cl_dll\hud_edgebug.h" />
     <ClInclude Include="..\..\cl_dll\hud_grapplecharge.h" />
     <ClInclude Include="..\..\cl_dll\hud_jumpstats.h" />
     <ClInclude Include="..\..\cl_dll\hud_photo.h" />

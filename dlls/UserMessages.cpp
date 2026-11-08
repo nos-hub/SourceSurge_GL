@@ -1,23 +1,24 @@
 /***
-*
-*	Copyright (c) 1996-2001, Valve LLC. All rights reserved.
-*
-*	This product contains software technology licensed from Id
-*	Software, Inc. ("Id Technology").  Id Technology (c) 1996 Id Software, Inc.
-*	All Rights Reserved.
-*
-*   Use, distribution, and modification of this source code and/or resulting
-*   object code is restricted to non-commercial enhancements to products from
-*   Valve LLC.  All other use, distribution, or modification is prohibited
-*   without written permission from Valve LLC.
-*
-****/
+ *
+ *	Copyright (c) 1996-2001, Valve LLC. All rights reserved.
+ *
+ *	This product contains software technology licensed from Id
+ *	Software, Inc. ("Id Technology").  Id Technology (c) 1996 Id Software, Inc.
+ *	All Rights Reserved.
+ *
+ *   Use, distribution, and modification of this source code and/or resulting
+ *   object code is restricted to non-commercial enhancements to products from
+ *   Valve LLC.  All other use, distribution, or modification is prohibited
+ *   without written permission from Valve LLC.
+ *
+ ****/
 
 #include "extdll.h"
 #include "util.h"
 #include "cbase.h"
 #include "shake.h"
 #include "UserMessages.h"
+#include "edgebug.h"
 
 void LinkUserMessages()
 {
@@ -35,7 +36,7 @@ void LinkUserMessages()
 	gmsgDamage = REG_USER_MSG("Damage", 12);
 	gmsgBattery = REG_USER_MSG("Battery", 2);
 	gmsgTrain = REG_USER_MSG("Train", 1);
-	//gmsgHudText = REG_USER_MSG( "HudTextPro", -1 );
+	// gmsgHudText = REG_USER_MSG( "HudTextPro", -1 );
 	gmsgHudText = REG_USER_MSG("HudText", -1); // we don't use the message but 3rd party addons may!
 	gmsgSayText = REG_USER_MSG("SayText", -1);
 	gmsgTextMsg = REG_USER_MSG("TextMsg", -1);
@@ -69,6 +70,7 @@ void LinkUserMessages()
 	gmsgWaveState = REG_USER_MSG("WaveState", -1);
 	gmsgGrappleCharge = REG_USER_MSG("GrapCharge", -1);
 	gmsgTechPts = REG_USER_MSG("TechPts", -1);
+	Edgebug_RegisterMessages(); // EdgeBug HUD message
 	gmsgMeleeCharges = REG_USER_MSG("MeleeKB", -1);
 
 	gmsgSniperScope = REG_USER_MSG("SniperScope", 1);
@@ -77,6 +79,7 @@ void LinkUserMessages()
 	gmsgPhotoDat = REG_USER_MSG("PhotoDat", -1);
 	gmsgPhotoSpr = REG_USER_MSG("PhotoSpr", -1);
 }
+
 int gmsgPoints = 0;
 int gmsgWaveState = 0;
 int gmsgGrappleCharge = 0;

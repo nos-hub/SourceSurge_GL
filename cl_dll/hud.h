@@ -495,6 +495,7 @@ private:
 #include "hud_meleecharges.h"
 #include "hud_scope.h"
 #include "hud_jumpstats.h"
+#include "hud_edgebug.h"
 
 class CHud
 {
@@ -599,6 +600,7 @@ public:
 	CHudPhoto m_Photo;
 	CHudMeleeCharges m_MeleeCharges;
 	CHudJumpStats m_JumpStats;
+	CHudEdgeBug m_EdgeBug;
 
 	void Init();
 	void VidInit();

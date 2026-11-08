@@ -17,3 +17,9 @@ void Edgebug_Touch(CBasePlayer* pPlayer);
 
 // triggers.cpp, top of CBaseTrigger::TeleportTouch() (optional): resets the player's state
 void Edgebug_Reset(CBaseEntity* pEntity);
+
+void Edgebug_RegisterMessages();
+
+bool Edgebug_Command(CBasePlayer* pPlayer, const char* pcmd);
+void Edgebug_ClientPutInServer(CBasePlayer* pPlayer);
+void Edgebug_Think();

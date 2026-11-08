@@ -3044,6 +3044,175 @@ void PM_ReduceTimers()
 	}
 }
 
+// ---------------------------------------------------------------------------
+// EdgeBug assist
+// ---------------------------------------------------------------------------
+#define EB_ASSIST_MIN_FALL_SPEED 160.0f // slower landings are never converted (about a 17 unit drop, the detector's minimum)
+#define EB_ASSIST_MIN_HSPEED 200.0f		// landings slower than this (horizontal u/s) are never converted
+#define EB_ASSIST_STEP 1.0f				// search granularity in units
+#define EB_ASSIST_DIRS 4				// directions tried around the player
+#define EB_ASSIST_DEBUG 1				// 1 = print decisions to the server console, set to 0 when you're done tuning
+
+#if EB_ASSIST_DEBUG
+#define EB_DBG(...)                         \
+	do                                      \
+	{                                       \
+		if (pmove->server)                  \
+			pmove->Con_Printf(__VA_ARGS__); \
+	} while (0)
+#else
+#define EB_DBG(...) \
+	do              \
+	{               \
+	} while (0)
+#endif
+
+// Same 2 unit trace down that PM_CatagorizePosition does.
+// Returns true if the hull is held up at 'org' (solid floor, or blocked/stuck).
+static bool PM_EbSupported(Vector org, pmtrace_t* out)
+{
+	Vector down = org;
+	down[2] -= 2.0f;
+
+	pmtrace_t tr = pmove->PM_PlayerTrace(org, down, PM_NORMAL, -1);
+
+	if (out)
+		*out = tr;
+
+	if (0 != tr.startsolid || 0 != tr.allsolid)
+		return true;
+
+	return tr.fraction < 1.0f && tr.plane.normal[2] >= 0.7f;
+}
+
+#if !defined(CLIENT_DLL)
+// server only: fall speed of the last assisted landing per player (entity index), 0 = none.
+// read and cleared by Edgebug_PreThink in edgebug.cpp
+float g_EbAssistFall[33];
+#endif
+
+// Runs right after the final PM_CatagorizePosition of the frame (ground movement branch).
+// If a fast fall just landed within 'range' units of a ledge edge, slide the player off the
+// closest edge and cancel the landing so it becomes an EdgeBug.
+static void PM_EdgebugAssist(bool wasAirborne)
+{
+	const int range = atoi(pmove->PM_Info_ValueForKey(pmove->physinfo, "eba"));
+	if (range <= 0)
+		return;
+
+	// only convert a fresh landing (a real EB already left us airborne)
+	if (!wasAirborne || pmove->onground == -1)
+		return;
+
+	if (0 != pmove->dead || pmove->waterlevel > 0)
+		return;
+
+	if (pmove->flFallVelocity < EB_ASSIST_MIN_FALL_SPEED)
+		return;
+
+	// moving too slowly: no teleport, the landing stays a normal landing
+	Vector pref;
+	pref[0] = pmove->velocity[0];
+	pref[1] = pmove->velocity[1];
+	pref[2] = 0;
+
+	const float hSpeed = VectorNormalize(pref); // pref is now the unit movement direction
+	if (hSpeed < EB_ASSIST_MIN_HSPEED)
+	{
+		EB_DBG("[eb assist] fall %.0f u/s: too slow (%.0f u/s horizontal, need %.0f)\n",
+			pmove->flFallVelocity, hSpeed, EB_ASSIST_MIN_HSPEED);
+		return;
+	}
+
+	// we must be standing on a flat floor right now
+	pmtrace_t floorTr;
+	if (!PM_EbSupported(pmove->origin, &floorTr) || floorTr.plane.normal[2] < 0.99f)
+	{
+		EB_DBG("[eb assist] fall %.0f u/s: floor is not flat (normal z %.2f)\n",
+			pmove->flFallVelocity, floorTr.plane.normal[2]);
+		return;
+	}
+
+	Vector startOrigin;
+	VectorCopy(pmove->origin, startOrigin);
+
+	// velocity at the moment of landing (this is what the engine reports as the impact velocity)
+	Vector impactVel;
+	VectorCopy(pmove->velocity, impactVel);
+
+	const float baseYaw = atan2f(pref[1], pref[0]);
+	const float angleStep = 6.2831853f / EB_ASSIST_DIRS;
+
+	float bestDist = (float)range + 1.0f;
+	Vector bestOrigin;
+	bool found = false;
+
+	// directions in order: straight ahead, then alternating left/right, up to straight behind
+	for (int k = 0; k < EB_ASSIST_DIRS; k++)
+	{
+		const float offset = ((k & 1) ? 1.0f : -1.0f) * (float)((k + 1) / 2) * angleStep;
+		const float yaw = baseYaw + offset;
+
+		Vector dir;
+		dir[0] = cosf(yaw);
+		dir[1] = sinf(yaw);
+		dir[2] = 0;
+
+		// cheap reject: if we are still held up at the full range, there is no edge this way
+		Vector endp;
+		VectorMA(startOrigin, (float)range, dir, endp);
+		if (PM_EbSupported(endp, NULL))
+			continue;
+
+		// find the closest spot in this direction where the hull has cleared the ledge
+		for (float d = EB_ASSIST_STEP; d <= (float)range && d < bestDist; d += EB_ASSIST_STEP)
+		{
+			Vector probe;
+			VectorMA(startOrigin, d, dir, probe);
+
+			if (PM_EbSupported(probe, NULL))
+				continue;
+
+			// first unsupported spot decides this direction: it only counts if the path is clear
+			pmtrace_t tr = pmove->PM_PlayerTrace(startOrigin, probe, PM_NORMAL, -1);
+			if (0 == tr.startsolid && 0 == tr.allsolid && tr.fraction == 1.0f)
+			{
+				bestDist = d;
+				VectorCopy(probe, bestOrigin);
+				found = true;
+			}
+			break;
+		}
+	}
+
+	if (!found)
+	{
+		EB_DBG("[eb assist] fall %.0f u/s: no ledge exit within %d units\n", pmove->flFallVelocity, range);
+		return;
+	}
+
+	EB_DBG("[eb assist] fall %.0f u/s: converted, moved %.1f units\n", pmove->flFallVelocity, bestDist);
+
+#if !defined(CLIENT_DLL)
+	// tell the server-side EdgeBug detector this landing was converted, so it always counts
+	if (pmove->server)
+	{
+		const int idx = pmove->player_index + 1;
+		if (idx >= 1 && idx <= 32)
+			g_EbAssistFall[idx] = pmove->flFallVelocity;
+	}
+#endif
+
+	// make sure the engine reports the floor touch (with the real impact velocity)
+	PM_AddToTouched(floorTr, impactVel);
+
+	// same end state as a natural EB: off the ledge, airborne, z velocity cleared
+	// (PM_FixupGravityVelocity right after this gives it the usual half-step of gravity)
+	VectorCopy(bestOrigin, pmove->origin);
+	pmove->velocity[2] = 0;
+	pmove->onground = -1;
+}
+
 /*
 =============
 PlayerMove
@@ -3241,6 +3410,9 @@ void PM_PlayerMove(qboolean server)
 
 		// Not underwater
 		{
+			// EdgeBug assist: remember if we started this frame in the air (before any jump)
+			const bool ebWasAirborne = (pmove->onground == -1);
+
 			// Was jump button pressed?
 			if ((pmove->cmd.buttons & IN_JUMP) != 0)
 			{
@@ -3277,6 +3449,9 @@ void PM_PlayerMove(qboolean server)
 
 			// Set final flags.
 			PM_CatagorizePosition();
+
+			// EdgeBug assist: turn a corner-of-the-ledge landing into an EdgeBug
+			PM_EdgebugAssist(ebWasAirborne);
 
 			// Now pull the base velocity back out.
 			// Base velocity is set if you are on a moving object, like

@@ -226,6 +226,7 @@ void ClientPutInServer(edict_t* pEntity)
 	pPlayer->Spawn();
 
 	JumpStats_ClientPutInServer(pPlayer);
+	Edgebug_ClientPutInServer(pPlayer);
 
 	// Reset interpolation during first frame
 	pPlayer->pev->effects |= EF_NOINTERP;
@@ -537,6 +538,10 @@ void ClientCommand(edict_t* pEntity)
 
 	// jumpstats first (handles console cmds and "say /cmd")
 	if (JumpStats_Command(player, pcmd))
+		return;
+
+	// edgebug per-player settings (eb_chat)
+	if (Edgebug_Command(player, pcmd))
 		return;
 
 	if (FStrEq(pcmd, "say"))
@@ -958,6 +963,8 @@ void StartFrame()
 	gpGlobals->teamplay = teamplay.value;
 	g_ulFrameCount++;
 
+	Edgebug_Think();
+
 	const bool allowBunnyHopping = sv_allowbunnyhopping.value != 0;
 
 	if (allowBunnyHopping != g_LastAllowBunnyHoppingState)
@@ -984,7 +991,6 @@ void StartFrame()
 		LoadNextMap();
 	}
 }
-
 
 void ClientPrecache()
 {
