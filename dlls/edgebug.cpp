@@ -35,7 +35,7 @@ constexpr int EDGEBUG_ASSIST_VAL_MID = 10;
 constexpr int EDGEBUG_ASSIST_VAL_HIGH = 20;
 constexpr float EDGEBUG_ASSIST_SAMPLE_TIME = 5.0f; // seconds between fps checks
 constexpr int EDGEBUG_ASSIST_FORCE_MAX = 64;	   // highest value eb_assist_force accepts
-constexpr bool EDGEBUG_ASSIST_LOG = true;		   // print to the server console when the automatic value changes
+constexpr bool EDGEBUG_ASSIST_LOG = false;		   // print to the server console when the automatic value changes
 
 extern float g_EbAssistFall[33]; // set by the pm_shared EdgeBug assist
 

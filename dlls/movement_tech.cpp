@@ -31,8 +31,8 @@ constexpr int TECH_PTS_RAMPSLIDE = 5;  // per TECH_TICK
 constexpr int TECH_PTS_FASTLADDER = 5; // per TECH_TICK
 constexpr int TECH_PTS_WALLSTRAFE = 5; // per TECH_TICK
 constexpr int TECH_PTS_PERFBHOP = 30;
-constexpr int TECH_PTS_JUMPBUG = 5000;
-constexpr int TECH_PTS_EDGEBUG[3] = {1000, 3000, 5000}; // 1st, 2nd (double), 3rd and later (triple)
+constexpr int TECH_PTS_JUMPBUG = 1000;
+constexpr int TECH_PTS_EDGEBUG[3]= {200, 400, 800}; // 1st, 2nd (double), 3rd and later (triple)
 
 // ---------------- timing ----------------
 constexpr float TECH_TICK = 0.5f;  // points are awarded every time a tech has been active this long

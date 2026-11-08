@@ -3051,7 +3051,7 @@ void PM_ReduceTimers()
 #define EB_ASSIST_MIN_HSPEED 200.0f		// landings slower than this (horizontal u/s) are never converted
 #define EB_ASSIST_STEP 1.0f				// search granularity in units
 #define EB_ASSIST_DIRS 4				// directions tried around the player
-#define EB_ASSIST_DEBUG 1				// 1 = print decisions to the server console, set to 0 when you're done tuning
+#define EB_ASSIST_DEBUG 0				// 1 = print decisions to the server console, set to 0 when you're done tuning
 
 #if EB_ASSIST_DEBUG
 #define EB_DBG(...)                         \
