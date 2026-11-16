@@ -55,6 +55,8 @@ extern edict_t* EntSelectSpawnPoint(CBaseEntity* pPlayer);
 
 
 extern bool IsBustingGame();
+void HitFeedback_LinkUserMessages();
+
 
 #define TRAIN_ACTIVE 0x80
 #define TRAIN_NEW 0xc0
@@ -3066,6 +3068,8 @@ void CBasePlayer::Precache()
 	LinkUserMessages();
 
 	JumpStats_LinkUserMessages();
+	JumpStats_LinkUserMessages();
+	HitFeedback_LinkUserMessages();
 
 	m_iUpdateTime = 5; // won't update for 1/2 a second
 

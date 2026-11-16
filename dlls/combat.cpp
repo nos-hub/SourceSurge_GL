@@ -31,6 +31,8 @@
 #include "func_break.h"
 #include "points.h"
 
+void HitFeedback_Send(entvars_t*, CBaseEntity*, float, int);
+
 extern Vector VecBModelOrigin(entvars_t* pevBModel);
 
 #define GERMAN_GIB_COUNT 4
@@ -895,6 +897,7 @@ bool CBaseMonster::TakeDamage(entvars_t* pevInflictor, entvars_t* pevAttacker, f
 
 	// do the damage
 	pev->health -= flTake;
+	HitFeedback_Send(pevAttacker, this, flTake, bitsDamageType);
 
 
 	// HACKHACK Don't kill monsters in a script.  Let them break their scripts first

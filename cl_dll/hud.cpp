@@ -389,6 +389,7 @@ void CHud::Init()
 	m_Photo.Init();
 	m_JumpStats.Init();
 	m_EdgeBug.Init();
+	m_HitFeedback.Init();
 
 	
     // === HUD Editor Registration ===
@@ -481,6 +482,7 @@ void CHud::VidInit()
 	m_Scope.VidInit();
 	m_Photo.VidInit();
 	m_JumpStats.VidInit();
+	m_HitFeedback.VidInit();
 	m_EdgeBug.VidInit();
 
 	m_scrinfo.iSize = sizeof(m_scrinfo);

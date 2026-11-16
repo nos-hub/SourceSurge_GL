@@ -120,6 +120,7 @@ xcopy /Y /Q "$(TargetDir)hl.pdb" "D:\.SourceSurge_gld\xash3d-fwgs-win32-i386\sou
     <ClCompile Include="..\..\dlls\checkpoint.cpp" />
     <ClCompile Include="..\..\dlls\edgebug.cpp" />
     <ClCompile Include="..\..\dlls\health_on_kill.cpp" />
+    <ClCompile Include="..\..\dlls\hitfeedback.cpp" />
     <ClCompile Include="..\..\dlls\jumpstats.cpp" />
     <ClCompile Include="..\..\dlls\melee_kb.cpp" />
     <ClCompile Include="..\..\dlls\movement_tech.cpp" />
