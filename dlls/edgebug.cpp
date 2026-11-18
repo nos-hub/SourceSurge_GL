@@ -4,7 +4,7 @@
 // Detects successful edgebugs and prints the stats (distance, fall speed, engine FPS)
 // to the player's console, sends them to the custom client HUD (player + spectators),
 // and to chat for big ones (only for players who enabled it with eb_chat).
-// Also drives the EdgeBug movement assist: its strength scales with each player's fps.
+// Also drives the EdgeBug movement assist: fixed strength, overridable with eb_assist_force (cheats only).
 
 #include "extdll.h"
 #include "util.h"
@@ -26,22 +26,14 @@ constexpr bool EDGEBUG_USE_SOUNDS = false;	// needs jumpstats/godlike.wav + jump
 
 constexpr int EDGEBUG_ASSIST_MIN_DISTANCE = 0; // assisted EBs shorter than this don't count (0 = always count, 17 = same as natural EBs)
 
-// assist strength scaling with fps: (fps, units) points, linear in between, clamped outside
-constexpr int EDGEBUG_ASSIST_FPS_LOW = 30;	  // at or below this fps -> EDGEBUG_ASSIST_VAL_LOW
-constexpr int EDGEBUG_ASSIST_FPS_MID = 200;	  // at this fps -> EDGEBUG_ASSIST_VAL_MID
-constexpr int EDGEBUG_ASSIST_FPS_HIGH = 1000; // at or above this fps -> EDGEBUG_ASSIST_VAL_HIGH
-constexpr int EDGEBUG_ASSIST_VAL_LOW = 2;
-constexpr int EDGEBUG_ASSIST_VAL_MID = 10;
-constexpr int EDGEBUG_ASSIST_VAL_HIGH = 20;
-constexpr float EDGEBUG_ASSIST_SAMPLE_TIME = 5.0f; // seconds between fps checks
-constexpr int EDGEBUG_ASSIST_FORCE_MAX = 64;	   // highest value eb_assist_force accepts
-constexpr bool EDGEBUG_ASSIST_LOG = false;		   // print to the server console when the automatic value changes
+constexpr int EDGEBUG_ASSIST_DEFAULT = 3;	 // assist strength in units when nothing is forced
+constexpr int EDGEBUG_ASSIST_FORCE_MAX = 64; // highest value eb_assist_force accepts
 
 extern float g_EbAssistFall[33]; // set by the pm_shared EdgeBug assist
 
 int gmsgEdgeBug = 0;
 
-// EdgeBug assist master switch: 0 = off, anything else = on (strength comes from fps, or eb_assist_force)
+// EdgeBug assist master switch: 0 = off, anything else = on
 cvar_t sv_eb_assist = {"sv_eb_assist", "1", FCVAR_SERVER};
 static bool g_bEbCvarRegistered = false;
 
@@ -55,11 +47,9 @@ struct EbState
 	float touchedVelocity = 0.0f;
 	bool chat = false; // per-player: show EdgeBug announcements in chat (eb_chat)
 
-	// assist strength (per player, because fps is per player)
-	int assistAuto = EDGEBUG_ASSIST_VAL_MID; // latest value computed from fps
-	int assistForce = -1;					 // eb_assist_force value, -1 = not forced
-	int assistSent = -1;					 // last value pushed to physinfo "eba"
-	float nextSample = 0.0f;				 // next time we read the fps
+	// assist strength (per player)
+	int assistForce = -1; // eb_assist_force value, -1 = not forced
+	int assistSent = -1;  // last value pushed to physinfo "eba"
 };
 
 static EbState g_Eb[33]; // indexed by entity index (1..32)
@@ -80,29 +70,6 @@ static void ClearState(EbState& st)
 	st.edgebugs = 0;
 }
 
-// fps -> assist units: 30 fps = 2, 200 fps = 10, 1000 fps = 20, linear in between
-static int Edgebug_AssistForFps(int fps)
-{
-	if (fps <= EDGEBUG_ASSIST_FPS_LOW)
-		return EDGEBUG_ASSIST_VAL_LOW;
-	if (fps >= EDGEBUG_ASSIST_FPS_HIGH)
-		return EDGEBUG_ASSIST_VAL_HIGH;
-
-	float v;
-	if (fps <= EDGEBUG_ASSIST_FPS_MID)
-	{
-		const float t = (float)(fps - EDGEBUG_ASSIST_FPS_LOW) / (float)(EDGEBUG_ASSIST_FPS_MID - EDGEBUG_ASSIST_FPS_LOW);
-		v = EDGEBUG_ASSIST_VAL_LOW + t * (EDGEBUG_ASSIST_VAL_MID - EDGEBUG_ASSIST_VAL_LOW);
-	}
-	else
-	{
-		const float t = (float)(fps - EDGEBUG_ASSIST_FPS_MID) / (float)(EDGEBUG_ASSIST_FPS_HIGH - EDGEBUG_ASSIST_FPS_MID);
-		v = EDGEBUG_ASSIST_VAL_MID + t * (EDGEBUG_ASSIST_VAL_HIGH - EDGEBUG_ASSIST_VAL_MID);
-	}
-
-	return (int)(v + 0.5f);
-}
-
 // works out what this player's assist should be right now and pushes it to pm_shared when it changed
 static void Edgebug_UpdateAssist(CBasePlayer* pPlayer, EbState& st)
 {
@@ -113,7 +80,7 @@ static void Edgebug_UpdateAssist(CBasePlayer* pPlayer, EbState& st)
 	else if (st.assistForce >= 0 && CVAR_GET_FLOAT("sv_cheats") != 0)
 		target = st.assistForce; // forced (cheats only)
 	else
-		target = st.assistAuto;
+		target = EDGEBUG_ASSIST_DEFAULT;
 
 	if (target == st.assistSent)
 		return;
@@ -137,8 +104,8 @@ void Edgebug_RegisterMessages()
 	ALERT(at_console, "[edgebug] registered EdgeBug as msg %d\n", gmsgEdgeBug);
 }
 
-// called every frame from StartFrame: re-reads each player's fps every few seconds
-// and keeps their assist strength up to date
+// called every frame from StartFrame: keeps each player's assist key up to date
+// (reacts to sv_eb_assist, sv_cheats and eb_assist_force changes)
 void Edgebug_Think()
 {
 	for (int i = 1; i <= gpGlobals->maxClients; i++)
@@ -149,37 +116,18 @@ void Edgebug_Think()
 		if (pPlayer->pev->flags & FL_FAKECLIENT)
 			continue;
 
-		EbState& st = g_Eb[i];
-
-		const bool due = gpGlobals->time >= st.nextSample ||
-						 st.nextSample > gpGlobals->time + EDGEBUG_ASSIST_SAMPLE_TIME; // time went backwards (map change)
-
-		if (due && st.frameTime[0] > 0)
-		{
-			const int fps = (int)floorf(1000.0f / (float)st.frameTime[0] + 0.5f);
-			const int value = Edgebug_AssistForFps(fps);
-
-			if (EDGEBUG_ASSIST_LOG && value != st.assistAuto)
-				ALERT(at_console, "[edgebug] assist auto: %d fps -> %d units\n", fps, value);
-
-			st.assistAuto = value;
-			st.nextSample = gpGlobals->time + EDGEBUG_ASSIST_SAMPLE_TIME;
-		}
-
-		Edgebug_UpdateAssist(pPlayer, st);
+		Edgebug_UpdateAssist(pPlayer, g_Eb[i]);
 	}
 }
 
 void Edgebug_ClientPutInServer(CBasePlayer* pPlayer)
 {
-	// fresh player in this slot: back to defaults (chat off, assist automatic)
+	// fresh player in this slot: back to defaults (chat off, assist default)
 	EbState& st = GetState(pPlayer);
 	ClearState(st);
 	st.chat = false;
-	st.assistAuto = EDGEBUG_ASSIST_VAL_MID; // until the first fps sample comes in
 	st.assistForce = -1;
 	st.assistSent = -1;
-	st.nextSample = 0.0f;
 
 	// new players need the assist key right away
 	Edgebug_UpdateAssist(pPlayer, st);
@@ -214,9 +162,10 @@ bool Edgebug_Command(CBasePlayer* pPlayer, const char* pcmd)
 		{
 			char szInfo[128];
 			if (st.assistForce >= 0)
-				snprintf(szInfo, sizeof(szInfo), "[edgebug] assist forced to %d (eb_assist_force off to go back to automatic)\n", st.assistForce);
+				snprintf(szInfo, sizeof(szInfo), "[edgebug] assist forced to %d (eb_assist_force off to go back to %d)\n",
+					st.assistForce, EDGEBUG_ASSIST_DEFAULT);
 			else
-				snprintf(szInfo, sizeof(szInfo), "[edgebug] assist automatic, currently %d\n", st.assistAuto);
+				snprintf(szInfo, sizeof(szInfo), "[edgebug] assist at default (%d)\n", EDGEBUG_ASSIST_DEFAULT);
 			CLIENT_PRINTF(pPlayer->edict(), print_console, szInfo);
 			return true;
 		}
@@ -226,7 +175,10 @@ bool Edgebug_Command(CBasePlayer* pPlayer, const char* pcmd)
 		if (FStrEq(arg, "off") || FStrEq(arg, "-1"))
 		{
 			st.assistForce = -1;
-			CLIENT_PRINTF(pPlayer->edict(), print_console, "[edgebug] assist back to automatic (fps based)\n");
+
+			char szInfo[96];
+			snprintf(szInfo, sizeof(szInfo), "[edgebug] assist back to default (%d)\n", EDGEBUG_ASSIST_DEFAULT);
+			CLIENT_PRINTF(pPlayer->edict(), print_console, szInfo);
 		}
 		else if (arg[0] >= '0' && arg[0] <= '9')
 		{

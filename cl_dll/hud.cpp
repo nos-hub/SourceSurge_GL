@@ -26,6 +26,7 @@
 #include "vgui_int.h"
 #include "vgui_TeamFortressViewport.h"
 #include "ss_hud_editor_v2.h"
+#include "bodycam.h"
 
 // Console command for HUD editor
 void CmdHudEdit()
@@ -391,6 +392,8 @@ void CHud::Init()
 	m_EdgeBug.Init();
 	m_HitFeedback.Init();
 
+	BodyCam_Init();
+
 	
     // === HUD Editor Registration ===
     // Register the console command
@@ -399,7 +402,7 @@ void CHud::Init()
     // Register all widgets with stable IDs
     m_Editor->Add(HUD_SPEEDOMETER,       "Speedometer",       0.50f, 0.85f, 120, 30);
     m_Editor->Add(HUD_TIMER,             "Timer",             0.05f, 0.05f, 80,  20);
-    m_Editor->Add(HUD_WAVE_COUNTER,      "Wave Counter",      0.50f, 0.05f, 100, 20);
+    m_Editor->Add(HUD_WAVE_COUNTER,      "WaveCounter",      0.50f, 0.05f, 100, 20);
     m_Editor->Add(HUD_GRAPPLE_COOLDOWN,  "Grapple",           0.75f, 0.85f, 100, 30);
     m_Editor->Add(HUD_HEALTH,            "Health",            0.05f, 0.85f, 80,  20);
     m_Editor->Add(HUD_AMMO,              "Ammo",              0.20f, 0.85f, 100, 20);
@@ -415,6 +418,9 @@ void CHud::Init()
 	m_Editor->Add(HUD_JS_STRAFES,		 "StrafeStats",		  0.60f, 0.50f, 340, 150);
 	m_Editor->Add(HUD_JS_SPEED,			 "JumpSpeed",		  0.50f, 0.78f, 80, 30);
 	m_Editor->Add(HUD_EDGEBUG,			 "EdgeBug",			  0.43f, 0.62f, 220, 78);
+	m_Editor->Add(HUD_WAVE_LOBBY, "WaveLobby", 0.37f, 0.03f, WAVEHUD_LOBBY_W, WAVEHUD_LOBBY_H);
+	m_Editor->Add(HUD_WAVE_STATS, "WaveStats", 0.40f, 0.22f, WAVEHUD_STATS_W, WAVEHUD_STATS_H);
+	m_Editor->Add(HUD_WAVE_RETRY, "WaveRetry", 0.37f, 0.03f, WAVEHUD_RETRY_W, WAVEHUD_RETRY_H);
 
     // Load saved layout
     m_Editor->SetProfile("default");

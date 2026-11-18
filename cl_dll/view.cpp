@@ -19,6 +19,9 @@
 #include "shake.h"
 #include "hltv.h"
 #include "Exports.h"
+#include "bodycam.h"
+
+
 
 int CL_IsThirdPerson();
 void CL_CameraOffset(float* ofs);
@@ -849,6 +852,8 @@ void V_CalcNormalRefdef(struct ref_params_s* pparams)
 	lasttime = pparams->time;
 
 	v_origin = pparams->vieworg;
+
+	BodyCam_CalcView(pparams);
 }
 
 void V_SmoothInterpolateAngles(float* startAngle, float* endAngle, float* finalAngle, float degreesPerSec)

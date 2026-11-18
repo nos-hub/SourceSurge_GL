@@ -68,6 +68,7 @@ void LinkUserMessages()
 	gmsgWeapons = REG_USER_MSG("Weapons", 8);
 	gmsgPoints = REG_USER_MSG("Points", -1);
 	gmsgWaveState = REG_USER_MSG("WaveState", -1);
+	gmsgWaveStats = REG_USER_MSG("WaveStats", -1);
 	gmsgGrappleCharge = REG_USER_MSG("GrapCharge", -1);
 	gmsgTechPts = REG_USER_MSG("TechPts", -1);
 	Edgebug_RegisterMessages(); // EdgeBug HUD message
@@ -82,6 +83,7 @@ void LinkUserMessages()
 
 int gmsgPoints = 0;
 int gmsgWaveState = 0;
+int gmsgWaveStats = 0;
 int gmsgGrappleCharge = 0;
 int gmsgTechPts = 0;
 int gmsgMeleeCharges = 0;

@@ -67,4 +67,5 @@ extern int gmsgSniperScope;
 extern int gmsgPhotoCap;
 extern int gmsgPhotoDat;
 extern int gmsgPhotoSpr;
-
+extern int gmsgWaveState; // waves
+extern int gmsgWaveStats; // end stats

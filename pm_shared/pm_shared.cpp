@@ -1475,6 +1475,32 @@ void PM_WaterMove()
 	PM_FlyMove();
 }
 
+// ---------------------------------------------------------------------------
+// Surf air acceleration
+// ---------------------------------------------------------------------------
+#define SURF_AIRACCEL_DEFAULT 1000.0f // used when physinfo "sac" is not set; 0 in "sac" disables it
+#define SURF_MIN_NORMAL_Z 0.05f		 // ignore walls
+#define SURF_MAX_NORMAL_Z 0.7f		 // same "too steep to stand on" limit as PM_CatagorizePosition
+
+// True if we are airborne and about to slide along a surf ramp this frame.
+// Gravity has already been applied to velocity, so a surfing player always presses into the ramp.
+static bool PM_IsSurfing()
+{
+	if (pmove->onground != -1)
+		return false;
+
+	Vector end;
+	VectorMA(pmove->origin, pmove->frametime, pmove->velocity, end);
+	end[2] -= 1.0f; // small bias so a ramp we are skimming along still registers
+
+	pmtrace_t tr = pmove->PM_PlayerTrace(pmove->origin, end, PM_NORMAL, -1);
+
+	if (tr.fraction == 1.0f || 0 != tr.startsolid || 0 != tr.allsolid)
+		return false;
+
+	return tr.plane.normal[2] > SURF_MIN_NORMAL_Z && tr.plane.normal[2] < SURF_MAX_NORMAL_Z;
+}
+
 
 /*
 ===================
@@ -1519,7 +1545,18 @@ void PM_AirMove()
 		wishspeed = pmove->maxspeed;
 	}
 
-	PM_AirAccelerate(wishdir, wishspeed, pmove->movevars->airaccelerate);
+	float accel = pmove->movevars->airaccelerate;
+
+	if (PM_IsSurfing())
+	{
+		const char* sac = pmove->PM_Info_ValueForKey(pmove->physinfo, "sac");
+		const float surfAccel = (sac && sac[0] != '\0') ? (float)atof(sac) : SURF_AIRACCEL_DEFAULT;
+
+		if (surfAccel > accel) // only ever raises accel, never lowers it
+			accel = surfAccel;
+	}
+
+	PM_AirAccelerate(wishdir, wishspeed, accel);
 
 	// Add in any base velocity to the current velocity.
 	VectorAdd(pmove->velocity, pmove->basevelocity, pmove->velocity);

@@ -119,6 +119,7 @@ xcopy /Y /Q "$(TargetPath)" "D:\.SourceSurge_gld\xash3d-fwgs-win32-i386\sourcesu
     <PostBuildEvent />
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\..\cl_dll\bodycam.cpp" />
     <ClCompile Include="..\..\cl_dll\hud_edgebug.cpp" />
     <ClCompile Include="..\..\cl_dll\hud_grapplecharge.cpp" />
     <ClCompile Include="..\..\cl_dll\hud_hitfeedback.cpp" />
@@ -216,6 +217,7 @@ xcopy /Y /Q "$(TargetPath)" "D:\.SourceSurge_gld\xash3d-fwgs-win32-i386\sourcesu
     <ClCompile Include="..\..\cl_dll\hl_discord_rpc.cpp" />
     <ClCompile Include="..\..\cl_dll\hud_speedometer.cpp" />
     <ClCompile Include="..\..\cl_dll\hud_timer.cpp" />
+    <ClInclude Include="..\..\cl_dll\bodycam.h" />
     <ClInclude Include="..\..\cl_dll\hl_discord_rpc.h" />
   </ItemGroup>
   <ItemGroup>

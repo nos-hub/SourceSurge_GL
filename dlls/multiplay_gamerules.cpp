@@ -487,7 +487,7 @@ void CHalfLifeMultiplay::PlayerSpawn(CBasePlayer* pPlayer)
 //=========================================================
 bool CHalfLifeMultiplay::FPlayerCanRespawn(CBasePlayer* pPlayer)
 {
-	if (Wave_IsActive())
+	if (Wave_RespawnBlocked())
 		return false;
 	return true;
 }

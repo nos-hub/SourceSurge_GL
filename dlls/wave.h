@@ -30,6 +30,11 @@ void Wave_Think();
 // before wave 1, where players may still respawn.
 bool Wave_IsActive();
 
+// true while respawning must be refused (cvar ss_wave_respawn_lock, default 1): from the
+// first wave until the retry menu shows. Free in the lobby, in the countdown before wave 1
+// and while the retry menu is up. Used by FPlayerCanRespawn() in solo and multiplayer rules.
+bool Wave_RespawnBlocked();
+
 // damage multiplier for hits dealt by wave enemies (1.0 for everything else).
 // call at the top of CBasePlayer::TakeDamage
 float Wave_DamageScale(struct entvars_s* pevAttacker);

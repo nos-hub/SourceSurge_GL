@@ -20,6 +20,7 @@
 #include "ss_hud_editor_v2.h"
 #include "hud_speedometer.h"
 #include "vgui_TeamFortressViewport.h"
+#include "bodycam.h"
 
 #define MAX_LOGO_FRAMES 56
 
@@ -95,6 +96,14 @@ bool CHud::Redraw(float flTime, bool intermission)
 {
 	m_fOldTime = m_flTime; // save time of previous redraw
 	m_flTime = flTime;
+
+	BodyCam_PostProcess();
+	if (BodyCam_HideHud())
+	{
+		BodyCam_DrawOverlay();
+		return 1;
+	}
+
 	m_flTimeDelta = (double)m_flTime - m_fOldTime;
 	static float m_flShotTime = 0;
 
@@ -210,14 +219,16 @@ bool CHud::Redraw(float flTime, bool intermission)
 	*/
 	
 	m_Speedometer.Draw( flTime );
-m_Timer.Draw( flTime );
-m_Health.Draw( flTime );
-m_Ammo.Draw( flTime );
-m_AmmoSecondary.Draw( flTime );
-m_Battery.Draw( flTime );
-m_Geiger.Draw( flTime );
-m_Flash.Draw( flTime );
-m_Speedometer.Draw(flTime);
+	m_Timer.Draw( flTime );
+	m_Health.Draw( flTime );
+	m_Ammo.Draw( flTime );
+	m_AmmoSecondary.Draw( flTime );
+	m_Battery.Draw( flTime );
+	m_Geiger.Draw( flTime );
+	m_Flash.Draw( flTime );
+	m_Speedometer.Draw(flTime);
+	
+	BodyCam_DrawOverlay();
 	
 	m_Editor->Draw();
 	return true;

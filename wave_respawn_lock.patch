@@ -1,0 +1,405 @@
+diff --git a/dlls/client.cpp b/dlls/client.cpp
+index e4cb0ac..a884046 100644
+--- a/dlls/client.cpp
++++ b/dlls/client.cpp
+@@ -160,21 +160,17 @@ void ClientDisconnect(edict_t* pEntity)
+ // called by ClientKill and DeadThink
+ void respawn(entvars_t* pev, bool fCopyCorpse)
+ {
+-	if (0 != gpGlobals->coop || 0 != gpGlobals->deathmatch)
++	// solo behaves like multiplayer here: respawn in place, never "reload" (which would
++	// load the last save). Whether the player may respawn at all is decided by
++	// FPlayerCanRespawn() (wave mode locks it while a wave runs).
++	if (fCopyCorpse)
+ 	{
+-		if (fCopyCorpse)
+-		{
+-			// make a copy of the dead body for appearances sake
+-			CopyToBodyQue(pev);
+-		}
+-
+-		// respawn player
+-		GetClassPtr((CBasePlayer*)pev)->Spawn();
+-	}
+-	else
+-	{ // restart the entire server
+-		SERVER_COMMAND("reload\n");
++		// make a copy of the dead body for appearances sake
++		CopyToBodyQue(pev);
+ 	}
++
++	// respawn player
++	GetClassPtr((CBasePlayer*)pev)->Spawn();
+ }
+ 
+ /*
+diff --git a/dlls/multiplay_gamerules.cpp b/dlls/multiplay_gamerules.cpp
+index 97ae57e..eda037e 100644
+--- a/dlls/multiplay_gamerules.cpp
++++ b/dlls/multiplay_gamerules.cpp
+@@ -487,7 +487,7 @@ void CHalfLifeMultiplay::PlayerSpawn(CBasePlayer* pPlayer)
+ //=========================================================
+ bool CHalfLifeMultiplay::FPlayerCanRespawn(CBasePlayer* pPlayer)
+ {
+-	if (Wave_IsActive())
++	if (Wave_RespawnBlocked())
+ 		return false;
+ 	return true;
+ }
+diff --git a/dlls/singleplay_gamerules.cpp b/dlls/singleplay_gamerules.cpp
+index 58f220b..876429f 100644
+--- a/dlls/singleplay_gamerules.cpp
++++ b/dlls/singleplay_gamerules.cpp
+@@ -24,6 +24,7 @@
+ #include "skill.h"
+ #include "items.h"
+ #include "UserMessages.h"
++#include "wave.h"
+ 
+ //=========================================================
+ //=========================================================
+@@ -143,6 +144,9 @@ void CHalfLifeRules::PlayerThink(CBasePlayer* pPlayer)
+ //=========================================================
+ bool CHalfLifeRules::FPlayerCanRespawn(CBasePlayer* pPlayer)
+ {
++	// wave mode: no respawn while a wave runs (cvar ss_wave_respawn_lock), free otherwise
++	if (Wave_RespawnBlocked())
++		return false;
+ 	return true;
+ }
+ 
+diff --git a/dlls/wave.cpp b/dlls/wave.cpp
+index 85bd001..9216470 100644
+--- a/dlls/wave.cpp
++++ b/dlls/wave.cpp
+@@ -6,7 +6,13 @@
+ //   PREP   (countdown) <-> ACTIVE (grunts out) ... repeated per wave
+ //   dead players become spectators; when nobody is alive -> game over
+ //   STATS  (end stats on screen) -> RETRY (F4 retry / F5 leave on the client)
+-//   retry  = reload the map and restart directly with the same difficulty
++//   retry  = no map reload: everyone is respawned and the ready-up lobby opens again
++//
++// Respawn lock (cvar ss_wave_respawn_lock, default 1):
++//   respawning is allowed in the lobby, during the countdown before wave 1 and while the
++//   retry menu is up. It is blocked from the first wave until the retry menu shows (waves,
++//   pauses between waves, game over, end stats). With the cvar at 0 players can always
++//   respawn and the session never ends by game over.
+ //
+ // Start paths:
+ //   ss_wave_start              open the ready-up lobby
+@@ -112,6 +118,11 @@ struct wave_state_t
+ 	int toSpawn; // grunts of this wave still to spawn
+ 	int peakPoints;
+ 
++	// best points per player (points reset on death, so the peak is remembered) + name
++	int peakBy[WAVE_MAX_PLAYERS + 1];
++	char peakName[WAVE_MAX_PLAYERS + 1][32];
++	bool seen[WAVE_MAX_PLAYERS + 1]; // took part in the session
++
+ 	float startTime;
+ 	float nextWaveTime; // also used as the "retry menu appears at" time in STATS
+ 	float nextSpawnTime;
+@@ -154,10 +165,12 @@ static float g_WavePrevAllowSpec = -1.0f;
+ 
+ static float g_WaveLastTime = 0.0f; // detects a new level (time restarts)
+ static bool g_WaveAutoArmed = true; // may auto-open the lobby on this level
+-static int g_WavePendingDiff = -1;	// >=0: start this difficulty after a retry reload
+ 
+ static cvar_t g_cvWaveAuto = {"ss_wave_auto", "1", FCVAR_SERVER}; // default: open the lobby on every map load
+ 
++// 1 = no respawn from the first wave until the retry menu shows; 0 = respawn always allowed
++static cvar_t g_cvWaveRespawnLock = {"ss_wave_respawn_lock", "1", FCVAR_SERVER};
++
+ // ---------------------------------------------------------------------------
+ // helpers
+ // ---------------------------------------------------------------------------
+@@ -239,6 +252,37 @@ static void Wave_SamplePoints()
+ 		CBasePlayer* pPlayer = (CBasePlayer*)pEnt;
+ 		if (pPlayer->m_iPoints > g_Wave.peakPoints)
+ 			g_Wave.peakPoints = pPlayer->m_iPoints;
++
++		// per-player best (for the "top player" line of the end stats)
++		if (i > WAVE_MAX_PLAYERS || !Wave_IsConnected(pEnt))
++			continue;
++		g_Wave.seen[i] = true;
++		if (pPlayer->m_iPoints > g_Wave.peakBy[i])
++		{
++			g_Wave.peakBy[i] = pPlayer->m_iPoints;
++
++			// keep the name (the player may have left by game over); no '%' or newlines
++			// because the stats text goes through client print functions
++			const char* name = STRING(pPlayer->pev->netname);
++			int n = 0;
++			for (; name && name[n] && n < (int)sizeof(g_Wave.peakName[i]) - 1; n++)
++			{
++				const char c = name[n];
++				g_Wave.peakName[i][n] = (c == '%' || c == '\n' || c == '\r') ? ' ' : c;
++			}
++			g_Wave.peakName[i][n] = 0;
++		}
++	}
++}
++
++static void Wave_ResetPeaks()
++{
++	g_Wave.peakPoints = 0;
++	for (int i = 0; i <= WAVE_MAX_PLAYERS; i++)
++	{
++		g_Wave.peakBy[i] = 0;
++		g_Wave.peakName[i][0] = 0;
++		g_Wave.seen[i] = false;
+ 	}
+ }
+ 
+@@ -917,6 +961,43 @@ static void Wave_SpectateDead()
+ 	}
+ }
+ 
++static bool Wave_LockOn()
++{
++	return CVAR_GET_FLOAT("ss_wave_respawn_lock") > 0;
++}
++
++// brings one dead / spectating player back with a normal spawn. Works in solo too
++// (Spawn() directly, never the "reload" of the stock single-player respawn).
++static void Wave_RespawnPlayer(CBasePlayer* pPlayer)
++{
++	if (!pPlayer || !Wave_IsConnected(pPlayer))
++		return;
++
++	const bool observer = pPlayer->pev->iuser1 != 0 || (pPlayer->m_afPhysicsFlags & PFLAG_OBSERVER) != 0;
++	if (pPlayer->IsAlive() && !observer)
++		return;
++
++	// leave observer mode (StartObserver / death cam left these set)
++	pPlayer->pev->iuser1 = 0;
++	pPlayer->pev->iuser2 = 0;
++	pPlayer->m_hObserverTarget = NULL;
++	pPlayer->m_iHideHUD = 0;
++	pPlayer->pev->team = 0;
++
++	pPlayer->Spawn();
++	pPlayer->pev->effects |= EF_NOINTERP;
++}
++
++static void Wave_RespawnAllDead()
++{
++	for (int i = 1; i <= gpGlobals->maxClients; i++)
++	{
++		CBaseEntity* pEnt = UTIL_PlayerByIndex(i);
++		if (Wave_IsConnected(pEnt))
++			Wave_RespawnPlayer((CBasePlayer*)pEnt);
++	}
++}
++
+ static void Wave_GameOver()
+ {
+ 	Wave_LoadHighScores();
+@@ -933,19 +1014,36 @@ static void Wave_GameOver()
+ 		newHigh = true;
+ 	}
+ 
+-	char msg[512];
++	// player with the most points (only worth a line when several players took part)
++	int best = 0, seenCount = 0;
++	for (int i = 1; i <= WAVE_MAX_PLAYERS; i++)
++	{
++		if (g_Wave.seen[i])
++			seenCount++;
++		if (g_Wave.peakBy[i] > g_Wave.peakBy[best])
++			best = i;
++	}
++
++	char topLine[96];
++	topLine[0] = 0;
++	if (best > 0 && seenCount >= 2)
++		sprintf(topLine, "Top player: %s (%d points)\n", g_Wave.peakName[best], g_Wave.peakBy[best]);
++
++	char msg[640];
+ 	sprintf(msg,
+ 		"WAVE MODE OVER (%s)\n\n"
+ 		"Waves survived: %d\n"
+ 		"Enemies killed: %d\n"
+ 		"Time survived: %d:%02d\n"
+ 		"Points: %d\n"
++		"%s"
+ 		"High score: %d%s\n",
+ 		g_WaveDiff[diff].name,
+ 		g_Wave.wavesCleared,
+ 		g_Wave.kills,
+ 		secs / 60, secs % 60,
+ 		g_Wave.peakPoints,
++		topLine,
+ 		g_WaveHighScore[diff], newHigh ? "  (NEW!)" : "");
+ 
+ 	// on-screen
+@@ -974,7 +1072,8 @@ static void Wave_GameOver()
+ 	if (IS_DEDICATED_SERVER())
+ 		ALERT(at_console, "%s", msg);
+ 
+-	// stats are showing; the retry menu opens once they have faded
++	// stats are showing (respawn still locked); all bots go now, the retry menu opens
++	// once the stats have faded and that is when everybody gets to respawn
+ 	Wave_ClearEnemies(true);
+ 	g_Wave.toSpawn = 0;
+ 	g_Wave.state = WAVE_NET_STATS;
+@@ -996,7 +1095,7 @@ static void Wave_Start(int difficulty)
+ 	g_Wave.wavesCleared = 0;
+ 	g_Wave.kills = 0;
+ 	g_Wave.toSpawn = 0;
+-	g_Wave.peakPoints = 0;
++	Wave_ResetPeaks();
+ 	g_Wave.hpScale = 1.0f;
+ 	g_Wave.dmgScale = 1.0f;
+ 	g_Wave.startTime = gpGlobals->time;
+@@ -1035,7 +1134,7 @@ static void Wave_OpenLobby()
+ 	g_Wave.wavesCleared = 0;
+ 	g_Wave.kills = 0;
+ 	g_Wave.toSpawn = 0;
+-	g_Wave.peakPoints = 0;
++	Wave_ResetPeaks();
+ 	g_Wave.hpScale = 1.0f;
+ 	g_Wave.dmgScale = 1.0f;
+ 	g_Wave.nextNetTime = 0;
+@@ -1048,22 +1147,14 @@ static void Wave_OpenLobby()
+ 		"Wave mode lobby: F4 = ready, 7/8/9/0 = vote easy/normal/hard/extreme\n");
+ }
+ 
+-// everyone pressed retry: reload the map, then restart with the same difficulty
++// everyone pressed retry: no map reload (that would load the save in solo). The session
++// is closed, everybody is respawned and the ready-up lobby opens again; the waves start
++// once everyone is ready and the difficulty has been voted.
+ static void Wave_DoRetry()
+ {
+-	g_WavePendingDiff = g_Wave.difficulty;
+-	Wave_Stop(false);
+-
+-	if (g_pGameRules && g_pGameRules->IsMultiplayer())
+-	{
+-		char cmd[96];
+-		sprintf(cmd, "changelevel %s\n", STRING(gpGlobals->mapname));
+-		SERVER_COMMAND(cmd);
+-	}
+-	else
+-	{
+-		SERVER_COMMAND("reload\n");
+-	}
++	Wave_Stop(true);
++	Wave_RespawnAllDead();
++	Wave_OpenLobby();
+ }
+ 
+ // ---------------------------------------------------------------------------
+@@ -1077,6 +1168,20 @@ bool Wave_IsActive()
+ 	return g_Wave.locked;
+ }
+ 
++bool Wave_RespawnBlocked()
++{
++	// lobby, countdown before wave 1, no session: free respawn
++	if (!g_Wave.locked)
++		return false;
++
++	// retry menu is up: the bots are gone, everybody may respawn again
++	if (g_Wave.state == WAVE_NET_RETRY)
++		return false;
++
++	// waves, pauses between waves, game over, end stats
++	return Wave_LockOn();
++}
++
+ // Every frame: living players always have the HEV suit. Single-player rules do not give it,
+ // and without it the client HUD hides weapons and ammo.
+ static void Wave_EnsureSuit()
+@@ -1114,22 +1219,10 @@ void Wave_Think()
+ 	// ---- no session: maybe start one automatically ----
+ 	if (g_Wave.state == WAVE_NET_OFF)
+ 	{
+-		const bool retryPending = g_WavePendingDiff >= 0;
+ 		const bool autoStart = g_WaveAutoArmed && CVAR_GET_FLOAT("ss_wave_auto") > 0;
+ 
+-		if ((retryPending || autoStart) && Wave_AnyPlayerAlive())
+-		{
+-			if (retryPending)
+-			{
+-				int diff = g_WavePendingDiff;
+-				g_WavePendingDiff = -1;
+-				Wave_Start(diff);
+-			}
+-			else
+-			{
+-				Wave_OpenLobby();
+-			}
+-		}
++		if (autoStart && Wave_AnyPlayerAlive())
++			Wave_OpenLobby();
+ 		return;
+ 	}
+ 
+@@ -1159,7 +1252,9 @@ void Wave_Think()
+ 		if (t >= g_Wave.nextWaveTime)
+ 		{
+ 			Wave_ResetFlags();
++			Wave_ClearEnemies(true); // safety: no bot survives into the retry menu
+ 			g_Wave.state = WAVE_NET_RETRY;
++			Wave_RespawnAllDead(); // respawn is open from now on, bring everybody back
+ 			Wave_Send(true);
+ 		}
+ 		else
+@@ -1172,7 +1267,6 @@ void Wave_Think()
+ 	// ---- retry menu ----
+ 	if (g_Wave.state == WAVE_NET_RETRY)
+ 	{
+-		Wave_SpectateDead();
+ 		Wave_CountReady(total, ready, NULL);
+ 		if (total > 0 && ready == total)
+ 		{
+@@ -1185,11 +1279,13 @@ void Wave_Think()
+ 
+ 	// ---- PREP / ACTIVE ----
+ 	Wave_SamplePoints();
+-	if (g_Wave.locked)
++	const bool lockedOut = g_Wave.locked && Wave_LockOn();
++	if (lockedOut)
+ 		Wave_SpectateDead();
+ 
+-	// before the first wave nobody can lose: players may still be respawning
+-	if (g_Wave.locked && !Wave_AnyPlayerAlive())
++	// before the first wave nobody can lose: players may still be respawning.
++	// With ss_wave_respawn_lock 0 players come back by themselves, so no game over either.
++	if (lockedOut && !Wave_AnyPlayerAlive())
+ 	{
+ 		Wave_GameOver();
+ 		return;
+@@ -1350,7 +1446,6 @@ static void Wave_StopCmd()
+ 		ALERT(at_console, "wave mode is not running\n");
+ 		return;
+ 	}
+-	g_WavePendingDiff = -1;
+ 	g_WaveAutoArmed = false;
+ 	Wave_Stop(true);
+ 	ALERT(at_console, "wave mode stopped\n");
+@@ -1420,6 +1515,7 @@ static void Wave_DllInfoCmd()
+ void Wave_Init()
+ {
+ 	CVAR_REGISTER(&g_cvWaveAuto);
++	CVAR_REGISTER(&g_cvWaveRespawnLock);
+ 
+ 	// char arrays: works whether the engine header wants char* or const char*
+ 	static char cmdStart[] = "ss_wave_start";
+diff --git a/dlls/wave.h b/dlls/wave.h
+index cb04b9d..87687e6 100644
+--- a/dlls/wave.h
++++ b/dlls/wave.h
+@@ -30,6 +30,11 @@ void Wave_Think();
+ // before wave 1, where players may still respawn.
+ bool Wave_IsActive();
+ 
++// true while respawning must be refused (cvar ss_wave_respawn_lock, default 1): from the
++// first wave until the retry menu shows. Free in the lobby, in the countdown before wave 1
++// and while the retry menu is up. Used by FPlayerCanRespawn() in solo and multiplayer rules.
++bool Wave_RespawnBlocked();
++
+ // damage multiplier for hits dealt by wave enemies (1.0 for everything else).
+ // call at the top of CBasePlayer::TakeDamage
+ float Wave_DamageScale(struct entvars_s* pevAttacker);

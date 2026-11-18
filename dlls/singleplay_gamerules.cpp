@@ -24,6 +24,7 @@
 #include "skill.h"
 #include "items.h"
 #include "UserMessages.h"
+#include "wave.h"
 
 //=========================================================
 //=========================================================
@@ -143,6 +144,9 @@ void CHalfLifeRules::PlayerThink(CBasePlayer* pPlayer)
 //=========================================================
 bool CHalfLifeRules::FPlayerCanRespawn(CBasePlayer* pPlayer)
 {
+	// wave mode: no respawn while a wave runs (cvar ss_wave_respawn_lock), free otherwise
+	if (Wave_RespawnBlocked())
+		return false;
 	return true;
 }
 

@@ -160,21 +160,17 @@ void ClientDisconnect(edict_t* pEntity)
 // called by ClientKill and DeadThink
 void respawn(entvars_t* pev, bool fCopyCorpse)
 {
-	if (0 != gpGlobals->coop || 0 != gpGlobals->deathmatch)
+	// solo behaves like multiplayer here: respawn in place, never "reload" (which would
+	// load the last save). Whether the player may respawn at all is decided by
+	// FPlayerCanRespawn() (wave mode locks it while a wave runs).
+	if (fCopyCorpse)
 	{
-		if (fCopyCorpse)
-		{
-			// make a copy of the dead body for appearances sake
-			CopyToBodyQue(pev);
-		}
+		// make a copy of the dead body for appearances sake
+		CopyToBodyQue(pev);
+	}
 
-		// respawn player
-		GetClassPtr((CBasePlayer*)pev)->Spawn();
-	}
-	else
-	{ // restart the entire server
-		SERVER_COMMAND("reload\n");
-	}
+	// respawn player
+	GetClassPtr((CBasePlayer*)pev)->Spawn();
 }
 
 /*
