@@ -118,10 +118,24 @@ struct wave_state_t
 	int toSpawn; // grunts of this wave still to spawn
 	int peakPoints;
 
-	// best points per player (points reset on death, so the peak is remembered) + name
-	int peakBy[WAVE_MAX_PLAYERS + 1];
-	char peakName[WAVE_MAX_PLAYERS + 1][32];
+	// per-player stats for the end screen + console, indexed by entity index (1..32)
+	int peakBy[WAVE_MAX_PLAYERS + 1];  // best points (points reset on death, so the peak is remembered)
+	int killsBy[WAVE_MAX_PLAYERS + 1]; // wave enemies killed
+	int deathsBy[WAVE_MAX_PLAYERS + 1];
+	bool wasAlive[WAVE_MAX_PLAYERS + 1];
 	bool seen[WAVE_MAX_PLAYERS + 1]; // took part in the session
+	char name[WAVE_MAX_PLAYERS + 1][32];
+
+	int firstDeath;	 // slot of the first player to die (0 = nobody yet)
+	int lastDeath;	 // slot of the most recent death (= last player standing at game over)
+	int bestKillPts; // most points a single kill was worth
+	int bestKillBy;
+	float waveBeginTime;
+	int fastWave, fastSecs; // quickest cleared wave (secs 0 = none yet)
+	int slowWave, slowSecs;
+
+	// sv_cheats was switched on during the session: it no longer counts for the high score
+	bool cheated;
 
 	float startTime;
 	float nextWaveTime; // also used as the "retry menu appears at" time in STATS
@@ -138,6 +152,7 @@ struct wave_state_t
 	int sentReady;
 	int sentTotal;
 	int sentCheats;
+	int sentCheated;
 
 	// true once the first wave has begun (mobs spawning): from then on there
 	// are no respawns, dead players spectate and the gameplay cvars are forced
@@ -241,7 +256,20 @@ static CBaseEntity* Wave_NearestPlayer(const Vector& origin)
 	return pBest;
 }
 
-// points are reset to 0 when the player dies, so remember the best value seen
+// copies a player name without '%' / newlines (the text goes through client print functions)
+static void Wave_CopyName(char* out, int size, const char* name)
+{
+	int n = 0;
+	for (; name && name[n] && n < size - 1; n++)
+	{
+		const char c = name[n];
+		out[n] = (c == '%' || c == '\n' || c == '\r') ? ' ' : c;
+	}
+	out[n] = 0;
+}
+
+// Every frame while waves run: points reset to 0 when the player dies, so remember the best
+// value seen; also tracks names and deaths for the end stats.
 static void Wave_SamplePoints()
 {
 	for (int i = 1; i <= gpGlobals->maxClients; i++)
@@ -253,25 +281,31 @@ static void Wave_SamplePoints()
 		if (pPlayer->m_iPoints > g_Wave.peakPoints)
 			g_Wave.peakPoints = pPlayer->m_iPoints;
 
-		// per-player best (for the "top player" line of the end stats)
-		if (i > WAVE_MAX_PLAYERS || !Wave_IsConnected(pEnt))
+		if (i > WAVE_MAX_PLAYERS)
 			continue;
-		g_Wave.seen[i] = true;
-		if (pPlayer->m_iPoints > g_Wave.peakBy[i])
+		if (!Wave_IsConnected(pEnt))
 		{
+			g_Wave.wasAlive[i] = false;
+			continue;
+		}
+
+		g_Wave.seen[i] = true;
+		Wave_CopyName(g_Wave.name[i], sizeof(g_Wave.name[i]), STRING(pPlayer->pev->netname));
+
+		if (pPlayer->m_iPoints > g_Wave.peakBy[i])
 			g_Wave.peakBy[i] = pPlayer->m_iPoints;
 
-			// keep the name (the player may have left by game over); no '%' or newlines
-			// because the stats text goes through client print functions
-			const char* name = STRING(pPlayer->pev->netname);
-			int n = 0;
-			for (; name && name[n] && n < (int)sizeof(g_Wave.peakName[i]) - 1; n++)
-			{
-				const char c = name[n];
-				g_Wave.peakName[i][n] = (c == '%' || c == '\n' || c == '\r') ? ' ' : c;
-			}
-			g_Wave.peakName[i][n] = 0;
+		// a death = alive last frame, dead (not spectating) now
+		const bool alive = Wave_PlayerAlive(pEnt);
+		if (g_Wave.wasAlive[i] && !alive && pEnt->pev->deadflag != DEAD_NO &&
+			(pEnt->pev->flags & FL_SPECTATOR) == 0)
+		{
+			g_Wave.deathsBy[i]++;
+			if (g_Wave.firstDeath == 0)
+				g_Wave.firstDeath = i;
+			g_Wave.lastDeath = i;
 		}
+		g_Wave.wasAlive[i] = alive;
 	}
 }
 
@@ -281,9 +315,20 @@ static void Wave_ResetPeaks()
 	for (int i = 0; i <= WAVE_MAX_PLAYERS; i++)
 	{
 		g_Wave.peakBy[i] = 0;
-		g_Wave.peakName[i][0] = 0;
+		g_Wave.killsBy[i] = 0;
+		g_Wave.deathsBy[i] = 0;
+		g_Wave.wasAlive[i] = false;
 		g_Wave.seen[i] = false;
+		g_Wave.name[i][0] = 0;
 	}
+	g_Wave.firstDeath = 0;
+	g_Wave.lastDeath = 0;
+	g_Wave.bestKillPts = 0;
+	g_Wave.bestKillBy = 0;
+	g_Wave.waveBeginTime = 0.0f;
+	g_Wave.fastWave = g_Wave.fastSecs = 0;
+	g_Wave.slowWave = g_Wave.slowSecs = 0;
+	g_Wave.cheated = false;
 }
 
 static int Wave_EnemyCount(int wave)
@@ -470,7 +515,8 @@ static void Wave_Send(bool force)
 	if (g_Wave.state == WAVE_NET_PREP || g_Wave.state == WAVE_NET_ACTIVE)
 		remaining = g_Wave.toSpawn + Wave_AliveCount();
 
-	const int netState = (g_Wave.state == WAVE_NET_STATS) ? WAVE_NET_OFF : g_Wave.state;
+	const int netState = g_Wave.state; // the client HUD draws the end stats in state 5
+	const int cheated = g_Wave.cheated ? 1 : 0;
 
 	// lobby only: tell the HUD when sv_cheats blocks the start
 	const int cheats = (g_Wave.state == WAVE_NET_LOBBY && CVAR_GET_FLOAT("sv_cheats") > 0) ? 1 : 0;
@@ -480,7 +526,7 @@ static void Wave_Send(bool force)
 
 	if (!force && g_Wave.state == g_Wave.sentState && g_Wave.wave == g_Wave.sentWave &&
 		remaining == g_Wave.sentRemaining && ready == g_Wave.sentReady &&
-		total == g_Wave.sentTotal && cheats == g_Wave.sentCheats &&
+		total == g_Wave.sentTotal && cheats == g_Wave.sentCheats && cheated == g_Wave.sentCheated &&
 		gpGlobals->time < g_Wave.nextNetTime)
 		return;
 
@@ -490,6 +536,7 @@ static void Wave_Send(bool force)
 	g_Wave.sentReady = ready;
 	g_Wave.sentTotal = total;
 	g_Wave.sentCheats = cheats;
+	g_Wave.sentCheated = cheated;
 	g_Wave.nextNetTime = gpGlobals->time + WAVE_NET_INTERVAL;
 
 	for (int i = 1; i <= gpGlobals->maxClients && i <= WAVE_MAX_PLAYERS; i++)
@@ -512,6 +559,7 @@ static void Wave_Send(bool force)
 		WRITE_BYTE(g_Wave.readyFlag[i] ? 1 : 0);
 		WRITE_BYTE(g_Wave.voteFor[i] < 0 ? 255 : g_Wave.voteFor[i]);
 		WRITE_BYTE(cheats);
+		WRITE_BYTE(cheated); // run no longer counts for the high score
 		MESSAGE_END();
 	}
 }
@@ -840,7 +888,7 @@ static void Wave_AlertEnemies()
 // grunts drop things. The chance grows with the points that kill was worth:
 //   chance = WAVE_DROP_BASE_CHANCE x (points / 100), capped at WAVE_DROP_MAX_CHANCE
 //   100 pts -> 10%   150 pts -> 15%   242 pts -> 24%   400 pts -> 40%   850+ pts -> 85%
-void Wave_OnPlayerKill(CBaseEntity* pVictim, int pointsGained)
+void Wave_OnPlayerKill(CBaseEntity* pVictim, int pointsGained, CBasePlayer* pKiller)
 {
 	if (!pVictim || g_Wave.state != WAVE_NET_ACTIVE)
 		return;
@@ -860,6 +908,18 @@ void Wave_OnPlayerKill(CBaseEntity* pVictim, int pointsGained)
 	}
 	if (!isWaveGrunt)
 		return;
+
+	// stats: kills per player and the best single kill
+	const int killer = Wave_SlotOf(pKiller);
+	if (killer > 0)
+	{
+		g_Wave.killsBy[killer]++;
+		if (pointsGained > g_Wave.bestKillPts)
+		{
+			g_Wave.bestKillPts = pointsGained;
+			g_Wave.bestKillBy = killer;
+		}
+	}
 
 	float chance = WAVE_DROP_BASE_CHANCE * ((float)pointsGained / 100.0f);
 	if (chance > WAVE_DROP_MAX_CHANCE)
@@ -903,6 +963,7 @@ static void Wave_BeginWave()
 	g_Wave.nextSpawnTime = gpGlobals->time;
 	g_Wave.nextAlertTime = gpGlobals->time + WAVE_ALERT_INTERVAL;
 	g_Wave.state = WAVE_NET_ACTIVE;
+	g_Wave.waveBeginTime = gpGlobals->time;
 
 	// mobs are about to spawn: from now on no respawns, dead players spectate,
 	// and mp_allowmonsters / allow_spectators are forced (restored on stop)
@@ -916,6 +977,21 @@ static void Wave_BeginWave()
 
 static void Wave_Cleared()
 {
+	// fastest / slowest wave of the session
+	int dur = (int)(gpGlobals->time - g_Wave.waveBeginTime + 0.5f);
+	if (dur < 1)
+		dur = 1;
+	if (g_Wave.fastSecs == 0 || dur < g_Wave.fastSecs)
+	{
+		g_Wave.fastSecs = dur;
+		g_Wave.fastWave = g_Wave.wave;
+	}
+	if (dur > g_Wave.slowSecs)
+	{
+		g_Wave.slowSecs = dur;
+		g_Wave.slowWave = g_Wave.wave;
+	}
+
 	g_Wave.wavesCleared++;
 	g_Wave.wave++;
 	g_Wave.state = WAVE_NET_PREP;
@@ -998,6 +1074,26 @@ static void Wave_RespawnAllDead()
 	}
 }
 
+// one line of the end stats on every client console (+ the server console when dedicated)
+static void Wave_PrintLine(const char* line)
+{
+	UTIL_ClientPrintAll(HUD_PRINTCONSOLE, line);
+	if (IS_DEDICATED_SERVER())
+		ALERT(at_console, "%s", line);
+}
+
+// sv_cheats was switched on while a session runs: tell everybody, the run stops counting
+// for the high score (it can still be played)
+static void Wave_FlagCheats()
+{
+	g_Wave.cheated = true;
+	UTIL_ClientPrintAll(HUD_PRINTCENTER, "CHEATS ENABLED\nThis run no longer counts for the high score");
+	Wave_PrintLine("[wave] sv_cheats was enabled during the run: it no longer counts for the high score.\n");
+	Wave_Send(true);
+}
+
+#define WAVE_STATS_ROWS 8 // players shown on the end stats screen
+
 static void Wave_GameOver()
 {
 	Wave_LoadHighScores();
@@ -1006,71 +1102,172 @@ static void Wave_GameOver()
 	const int diff = g_Wave.difficulty;
 	const int secs = (int)(gpGlobals->time - g_Wave.startTime);
 
+	// a run played with cheats never touches the high score
 	bool newHigh = false;
-	if (g_Wave.peakPoints > g_WaveHighScore[diff])
+	if (!g_Wave.cheated && g_Wave.peakPoints > g_WaveHighScore[diff])
 	{
 		g_WaveHighScore[diff] = g_Wave.peakPoints;
 		Wave_SaveHighScores();
 		newHigh = true;
 	}
 
-	// player with the most points (only worth a line when several players took part)
-	int best = 0, seenCount = 0;
+	// players that took part, best points first (ties: more kills first)
+	int order[WAVE_MAX_PLAYERS];
+	int n = 0;
 	for (int i = 1; i <= WAVE_MAX_PLAYERS; i++)
 	{
 		if (g_Wave.seen[i])
-			seenCount++;
-		if (g_Wave.peakBy[i] > g_Wave.peakBy[best])
-			best = i;
+			order[n++] = i;
+	}
+	for (int a = 1; a < n; a++)
+	{
+		const int v = order[a];
+		int b = a - 1;
+		while (b >= 0 && (g_Wave.peakBy[order[b]] < g_Wave.peakBy[v] ||
+							 (g_Wave.peakBy[order[b]] == g_Wave.peakBy[v] && g_Wave.killsBy[order[b]] < g_Wave.killsBy[v])))
+		{
+			order[b + 1] = order[b];
+			b--;
+		}
+		order[b + 1] = v;
 	}
 
-	char topLine[96];
-	topLine[0] = 0;
-	if (best > 0 && seenCount >= 2)
-		sprintf(topLine, "Top player: %s (%d points)\n", g_Wave.peakName[best], g_Wave.peakBy[best]);
+	// top player / most kills only mean something with several players
+	const bool multi = n >= 2;
+	int topPts = 0, topKills = 0;
+	if (multi)
+	{
+		if (g_Wave.peakBy[order[0]] > 0)
+			topPts = order[0];
+		for (int a = 0; a < n; a++)
+		{
+			if (g_Wave.killsBy[order[a]] > g_Wave.killsBy[topKills])
+				topKills = order[a];
+		}
+		if (topKills > 0 && g_Wave.killsBy[topKills] == 0)
+			topKills = 0;
+	}
 
-	char msg[640];
-	sprintf(msg,
-		"WAVE MODE OVER (%s)\n\n"
-		"Waves survived: %d\n"
-		"Enemies killed: %d\n"
-		"Time survived: %d:%02d\n"
-		"Points: %d\n"
-		"%s"
-		"High score: %d%s\n",
-		g_WaveDiff[diff].name,
-		g_Wave.wavesCleared,
-		g_Wave.kills,
-		secs / 60, secs % 60,
-		g_Wave.peakPoints,
-		topLine,
-		g_WaveHighScore[diff], newHigh ? "  (NEW!)" : "");
+	const char* bestKillName = g_Wave.bestKillBy > 0 ? g_Wave.name[g_Wave.bestKillBy] : "";
+	const char* firstDownName = (multi && g_Wave.firstDeath > 0) ? g_Wave.name[g_Wave.firstDeath] : "";
+	const char* lastStandName = (multi && g_Wave.lastDeath > 0) ? g_Wave.name[g_Wave.lastDeath] : "";
+	const int rows = n < WAVE_STATS_ROWS ? n : WAVE_STATS_ROWS;
 
-	// on-screen
-	hudtextparms_t tp;
-	memset(&tp, 0, sizeof(tp));
-	tp.channel = 3;
-	tp.x = -1;
-	tp.y = 0.25f;
-	tp.effect = 0;
-	tp.r1 = 255;
-	tp.g1 = 190;
-	tp.b1 = 0;
-	tp.a1 = 255;
-	tp.r2 = 255;
-	tp.g2 = 190;
-	tp.b2 = 0;
-	tp.a2 = 255;
-	tp.fadeinTime = 0.3f;
-	tp.fadeoutTime = 1.0f;
-	tp.holdTime = WAVE_STATS_HOLD;
-	tp.fxTime = 0;
-	UTIL_HudMessageAll(tp, msg);
+	// ---- custom HUD: summary message, then one message per scoreboard row ----
+	if (gmsgWaveStats != 0)
+	{
+		MESSAGE_BEGIN(MSG_ALL, gmsgWaveStats);
+		WRITE_BYTE(0); // summary
+		WRITE_BYTE(diff);
+		WRITE_SHORT(g_Wave.wavesCleared);
+		WRITE_SHORT(g_Wave.kills);
+		WRITE_SHORT(secs);
+		WRITE_LONG(g_Wave.peakPoints);
+		WRITE_LONG(g_WaveHighScore[diff]);
+		WRITE_BYTE(newHigh ? 1 : 0);
+		WRITE_BYTE(g_Wave.cheated ? 1 : 0);
+		WRITE_BYTE(rows);
+		WRITE_BYTE(g_Wave.fastWave > 255 ? 255 : g_Wave.fastWave);
+		WRITE_SHORT(g_Wave.fastSecs);
+		WRITE_BYTE(g_Wave.slowWave > 255 ? 255 : g_Wave.slowWave);
+		WRITE_SHORT(g_Wave.slowSecs);
+		WRITE_LONG(g_Wave.bestKillPts);
+		WRITE_STRING(bestKillName);
+		WRITE_STRING(firstDownName);
+		WRITE_STRING(lastStandName);
+		MESSAGE_END();
 
-	// console (clients), plus the server console on dedicated servers
-	UTIL_ClientPrintAll(HUD_PRINTCONSOLE, msg);
-	if (IS_DEDICATED_SERVER())
-		ALERT(at_console, "%s", msg);
+		for (int a = 0; a < rows; a++)
+		{
+			const int i = order[a];
+			int flags = 0;
+			if (i == topPts)
+				flags |= 1;
+			if (i == topKills)
+				flags |= 2;
+
+			MESSAGE_BEGIN(MSG_ALL, gmsgWaveStats);
+			WRITE_BYTE(1); // scoreboard row
+			WRITE_BYTE(i); // entity index (the client highlights its own row)
+			WRITE_STRING(g_Wave.name[i]);
+			WRITE_LONG(g_Wave.peakBy[i]);
+			WRITE_SHORT(g_Wave.killsBy[i]);
+			WRITE_SHORT(g_Wave.deathsBy[i]);
+			WRITE_BYTE(flags);
+			MESSAGE_END();
+		}
+	}
+
+	// ---- console: the full report ----
+	const float mins = secs > 0 ? secs / 60.0f : 0.0f;
+	const float kpm = mins > 0.0f ? g_Wave.kills / mins : 0.0f;
+	const float ppm = mins > 0.0f ? g_Wave.peakPoints / mins : 0.0f;
+	const float kpw = g_Wave.wavesCleared > 0 ? (float)g_Wave.kills / g_Wave.wavesCleared : 0.0f;
+
+	char line[160];
+	Wave_PrintLine("\n==================== WAVE MODE OVER ====================\n");
+	sprintf(line, " Difficulty ........ %s\n", g_WaveDiff[diff].name);
+	Wave_PrintLine(line);
+	sprintf(line, " Waves survived .... %d (died on wave %d)\n", g_Wave.wavesCleared, g_Wave.wave);
+	Wave_PrintLine(line);
+	sprintf(line, " Enemies killed .... %d (%.1f per minute, %.1f per wave)\n", g_Wave.kills, kpm, kpw);
+	Wave_PrintLine(line);
+	sprintf(line, " Time survived ..... %d:%02d\n", secs / 60, secs % 60);
+	Wave_PrintLine(line);
+	sprintf(line, " Points ............ %d (%.0f per minute)\n", g_Wave.peakPoints, ppm);
+	Wave_PrintLine(line);
+	if (g_Wave.fastSecs > 0)
+	{
+		sprintf(line, " Fastest wave ...... wave %d (%d:%02d)\n", g_Wave.fastWave, g_Wave.fastSecs / 60, g_Wave.fastSecs % 60);
+		Wave_PrintLine(line);
+		sprintf(line, " Slowest wave ...... wave %d (%d:%02d)\n", g_Wave.slowWave, g_Wave.slowSecs / 60, g_Wave.slowSecs % 60);
+		Wave_PrintLine(line);
+	}
+	if (g_Wave.bestKillPts > 0)
+	{
+		sprintf(line, " Best kill ......... +%d%s%s\n", g_Wave.bestKillPts, multi ? " by " : "", multi ? bestKillName : "");
+		Wave_PrintLine(line);
+	}
+	if (multi)
+	{
+		if (topPts > 0)
+		{
+			sprintf(line, " Top player ........ %s (%d points)\n", g_Wave.name[topPts], g_Wave.peakBy[topPts]);
+			Wave_PrintLine(line);
+		}
+		if (topKills > 0)
+		{
+			sprintf(line, " Most kills ........ %s (%d)\n", g_Wave.name[topKills], g_Wave.killsBy[topKills]);
+			Wave_PrintLine(line);
+		}
+		if (firstDownName[0])
+		{
+			sprintf(line, " First down ........ %s\n", firstDownName);
+			Wave_PrintLine(line);
+		}
+		if (lastStandName[0])
+		{
+			sprintf(line, " Last standing ..... %s\n", lastStandName);
+			Wave_PrintLine(line);
+		}
+	}
+	if (g_Wave.cheated)
+		sprintf(line, " High score ........ %d (cheats used: this run did not count)\n", g_WaveHighScore[diff]);
+	else
+		sprintf(line, " High score ........ %d%s\n", g_WaveHighScore[diff], newHigh ? " (NEW!)" : "");
+	Wave_PrintLine(line);
+
+	if (multi)
+	{
+		Wave_PrintLine("\n  #  Player                   Points   Kills  Deaths\n");
+		for (int a = 0; a < n; a++)
+		{
+			const int i = order[a];
+			sprintf(line, " %2d  %-22.22s %7d %7d %7d\n", a + 1, g_Wave.name[i], g_Wave.peakBy[i], g_Wave.killsBy[i], g_Wave.deathsBy[i]);
+			Wave_PrintLine(line);
+		}
+	}
+	Wave_PrintLine("========================================================\n");
 
 	// stats are showing (respawn still locked); all bots go now, the retry menu opens
 	// once the stats have faded and that is when everybody gets to respawn
@@ -1279,6 +1476,11 @@ void Wave_Think()
 
 	// ---- PREP / ACTIVE ----
 	Wave_SamplePoints();
+
+	// cheats switched on during the run (the lobby already refuses to start with them on)
+	if (!g_Wave.cheated && CVAR_GET_FLOAT("sv_cheats") > 0)
+		Wave_FlagCheats();
+
 	const bool lockedOut = g_Wave.locked && Wave_LockOn();
 	if (lockedOut)
 		Wave_SpectateDead();

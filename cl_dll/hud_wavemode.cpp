@@ -39,11 +39,17 @@ bool CHudWaveMode::Init()
 	m_iMyReady = 0;
 	m_iMyVote = 255;
 	m_iCheats = 0;
+	m_iRunCheated = 0;
 	m_flStateStart = 0;
 
 	m_iStatsDiff = 1;
 	m_iStatsWaves = m_iStatsKills = m_iStatsSecs = 0;
 	m_iStatsPoints = m_iStatsHigh = m_iStatsNewHigh = 0;
+	m_iStatsCheated = 0;
+	m_iStatsFastWave = m_iStatsFastSecs = m_iStatsSlowWave = m_iStatsSlowSecs = 0;
+	m_iStatsBestKill = 0;
+	m_szStatsBestKillName[0] = m_szStatsFirstDown[0] = m_szStatsLastStanding[0] = 0;
+	m_iStatsRows = m_iStatsExpectedRows = 0;
 
 	HOOK_MESSAGE(WaveState);
 	HOOK_MESSAGE(WaveStats);
@@ -80,21 +86,58 @@ bool CHudWaveMode::MsgFunc_WaveState(const char* pszName, int iSize, void* pbuf)
 	m_iMyReady = READ_BYTE();
 	m_iMyVote = READ_BYTE();
 	m_iCheats = READ_BYTE();
+	m_iRunCheated = READ_BYTE();
 	return true;
 }
 
+static void WaveHud_CopyStr(char* dst, int size, const char* src)
+{
+	strncpy(dst, src ? src : "", size - 1);
+	dst[size - 1] = 0;
+}
+
+// Two kinds of message (first byte):
+//   0 = summary of the run, 1 = one scoreboard row (best points first)
 bool CHudWaveMode::MsgFunc_WaveStats(const char* pszName, int iSize, void* pbuf)
 {
 	BEGIN_READ(pbuf, iSize);
-	m_iStatsDiff = READ_BYTE();
-	if (m_iStatsDiff < 0 || m_iStatsDiff > 3)
-		m_iStatsDiff = 1;
-	m_iStatsWaves = READ_SHORT();
-	m_iStatsKills = READ_SHORT();
-	m_iStatsSecs = READ_SHORT();
-	m_iStatsPoints = READ_LONG();
-	m_iStatsHigh = READ_LONG();
-	m_iStatsNewHigh = READ_BYTE();
+	const int type = READ_BYTE();
+
+	if (type == 0)
+	{
+		m_iStatsDiff = READ_BYTE();
+		if (m_iStatsDiff < 0 || m_iStatsDiff > 3)
+			m_iStatsDiff = 1;
+		m_iStatsWaves = READ_SHORT();
+		m_iStatsKills = READ_SHORT();
+		m_iStatsSecs = READ_SHORT();
+		m_iStatsPoints = READ_LONG();
+		m_iStatsHigh = READ_LONG();
+		m_iStatsNewHigh = READ_BYTE();
+		m_iStatsCheated = READ_BYTE();
+		m_iStatsExpectedRows = READ_BYTE();
+		m_iStatsFastWave = READ_BYTE();
+		m_iStatsFastSecs = READ_SHORT();
+		m_iStatsSlowWave = READ_BYTE();
+		m_iStatsSlowSecs = READ_SHORT();
+		m_iStatsBestKill = READ_LONG();
+		WaveHud_CopyStr(m_szStatsBestKillName, sizeof(m_szStatsBestKillName), READ_STRING());
+		WaveHud_CopyStr(m_szStatsFirstDown, sizeof(m_szStatsFirstDown), READ_STRING());
+		WaveHud_CopyStr(m_szStatsLastStanding, sizeof(m_szStatsLastStanding), READ_STRING());
+		m_iStatsRows = 0; // the rows follow
+		return true;
+	}
+
+	if (type == 1 && m_iStatsRows < STATS_MAX_ROWS)
+	{
+		const int r = m_iStatsRows++;
+		m_iRowIndex[r] = READ_BYTE();
+		WaveHud_CopyStr(m_szRowName[r], sizeof(m_szRowName[r]), READ_STRING());
+		m_iRowPoints[r] = READ_LONG();
+		m_iRowKills[r] = READ_SHORT();
+		m_iRowDeaths[r] = READ_SHORT();
+		m_iRowFlags[r] = READ_BYTE();
+	}
 	return true;
 }
 
@@ -261,7 +304,7 @@ void CHudWaveMode::DrawStats(int x, int y, float a, float since)
 {
 	const int w = WAVEHUD_STATS_W;
 	const int* c = g_DiffCol[m_iStatsDiff];
-	char buf[64];
+	char buf[96];
 
 	// numbers count up at the start
 	float k = since / WAVEHUD_COUNT_UP;
@@ -270,13 +313,25 @@ void CHudWaveMode::DrawStats(int x, int y, float a, float since)
 	if (k < 0.0f)
 		k = 0.0f;
 
-	DrawPanel(x, y, w, WAVEHUD_STATS_H, 255, 190, 0, a);
+	// the scoreboard only exists with several players
+	const bool multi = m_iStatsRows >= 2;
+	const int rows = m_iStatsRows;
+
+	// panel height follows the content
+	int h = 52 + 7 * 16 + 10;
+	if (multi)
+		h += 32 + 22 + rows * 15;
+	h += 40;
+	if (h > WAVEHUD_STATS_H)
+		h = WAVEHUD_STATS_H;
+
+	DrawPanel(x, y, w, h, 255, 190, 0, a);
 	DrawCentered(x, w, y + 10, "WAVE MODE OVER", 255, 190, 0, a);
 	DrawCentered(x, w, y + 28, g_DiffName[m_iStatsDiff], c[0], c[1], c[2], a);
 
 	const int lx = x + 24, rx = x + w - 24;
-	int ry = y + 54;
-	const int step = 18;
+	int ry = y + 52;
+	const int step = 16;
 
 	DrawLeft(lx, ry, "Waves survived", 200, 200, 200, a);
 	sprintf(buf, "%d", (int)(m_iStatsWaves * k));
@@ -284,7 +339,10 @@ void CHudWaveMode::DrawStats(int x, int y, float a, float since)
 	ry += step;
 
 	DrawLeft(lx, ry, "Enemies killed", 200, 200, 200, a);
-	sprintf(buf, "%d", (int)(m_iStatsKills * k));
+	if (m_iStatsSecs > 0)
+		sprintf(buf, "%d  (%.1f/min)", (int)(m_iStatsKills * k), m_iStatsKills * 60.0f / m_iStatsSecs);
+	else
+		sprintf(buf, "%d", (int)(m_iStatsKills * k));
 	DrawRight(rx, ry, buf, 255, 255, 255, a);
 	ry += step;
 
@@ -298,12 +356,98 @@ void CHudWaveMode::DrawStats(int x, int y, float a, float since)
 	DrawRight(rx, ry, buf, 255, 190, 0, a);
 	ry += step;
 
+	DrawLeft(lx, ry, "Fastest wave", 200, 200, 200, a);
+	if (m_iStatsFastSecs > 0)
+		sprintf(buf, "Wave %d  (%d:%02d)", m_iStatsFastWave, m_iStatsFastSecs / 60, m_iStatsFastSecs % 60);
+	else
+		strcpy(buf, "-");
+	DrawRight(rx, ry, buf, 120, 230, 120, a);
+	ry += step;
+
+	DrawLeft(lx, ry, "Slowest wave", 200, 200, 200, a);
+	if (m_iStatsSlowSecs > 0)
+		sprintf(buf, "Wave %d  (%d:%02d)", m_iStatsSlowWave, m_iStatsSlowSecs / 60, m_iStatsSlowSecs % 60);
+	else
+		strcpy(buf, "-");
+	DrawRight(rx, ry, buf, 240, 130, 100, a);
+	ry += step;
+
+	DrawLeft(lx, ry, "Best kill", 200, 200, 200, a);
+	if (m_iStatsBestKill > 0)
+	{
+		if (multi && m_szStatsBestKillName[0])
+			sprintf(buf, "+%d  %.16s", m_iStatsBestKill, m_szStatsBestKillName);
+		else
+			sprintf(buf, "+%d", m_iStatsBestKill);
+	}
+	else
+	{
+		strcpy(buf, "-");
+	}
+	DrawRight(rx, ry, buf, 255, 220, 60, a);
+	ry += step;
+
+	if (multi)
+	{
+		if (m_szStatsFirstDown[0])
+		{
+			DrawLeft(lx, ry, "First down", 200, 200, 200, a);
+			sprintf(buf, "%.20s", m_szStatsFirstDown);
+			DrawRight(rx, ry, buf, 255, 255, 255, a);
+		}
+		ry += step;
+
+		if (m_szStatsLastStanding[0])
+		{
+			DrawLeft(lx, ry, "Last standing", 200, 200, 200, a);
+			sprintf(buf, "%.20s", m_szStatsLastStanding);
+			DrawRight(rx, ry, buf, 255, 255, 255, a);
+		}
+		ry += step;
+
+		// scoreboard
+		ry += 6;
+		gEngfuncs.pfnFillRGBA(x + 12, ry - 3, w - 24, 1, 255, 190, 0, (int)(90 * a));
+		const int colPts = x + w - 150, colKills = x + w - 90, colDeaths = x + w - 24;
+		DrawLeft(lx, ry, "PLAYER", 160, 160, 160, a);
+		DrawRight(colPts, ry, "POINTS", 160, 160, 160, a);
+		DrawRight(colKills, ry, "KILLS", 160, 160, 160, a);
+		DrawRight(colDeaths, ry, "DEATHS", 160, 160, 160, a);
+		ry += 16;
+
+		const int me = gEngfuncs.GetLocalPlayer() ? gEngfuncs.GetLocalPlayer()->index : 0;
+		for (int i = 0; i < rows; i++)
+		{
+			if (m_iRowIndex[i] == me)
+				gEngfuncs.pfnFillRGBA(x + 12, ry - 2, w - 24, 14, 80, 220, 80, (int)(35 * a));
+
+			const bool top = (m_iRowFlags[i] & 1) != 0;
+			const bool kills = (m_iRowFlags[i] & 2) != 0;
+
+			sprintf(buf, "%d. %.18s", i + 1, m_szRowName[i]);
+			DrawLeft(lx, ry, buf, top ? 255 : 230, top ? 210 : 230, top ? 60 : 230, a);
+
+			sprintf(buf, "%d", m_iRowPoints[i]);
+			DrawRight(colPts, ry, buf, top ? 255 : 230, top ? 210 : 230, top ? 60 : 230, a);
+			sprintf(buf, "%d", m_iRowKills[i]);
+			DrawRight(colKills, ry, buf, kills ? 255 : 230, kills ? 210 : 230, kills ? 60 : 230, a);
+			sprintf(buf, "%d", m_iRowDeaths[i]);
+			DrawRight(colDeaths, ry, buf, 230, 230, 230, a);
+			ry += 15;
+		}
+	}
+
+	// footer
+	ry += 4;
 	DrawLeft(lx, ry, "High score", 200, 200, 200, a);
 	sprintf(buf, "%d", m_iStatsHigh);
 	DrawRight(rx, ry, buf, 255, 255, 255, a);
+	ry += step;
 
-	if (m_iStatsNewHigh)
-		DrawCentered(x, w, y + 152, "NEW HIGH SCORE!", 255, 220, 60, a);
+	if (m_iStatsCheated)
+		DrawCentered(x, w, ry, "CHEATS USED - HIGH SCORE NOT COUNTED", 255, 70, 60, a);
+	else if (m_iStatsNewHigh)
+		DrawCentered(x, w, ry, "NEW HIGH SCORE!", 255, 220, 60, a);
 }
 
 bool CHudWaveMode::Draw(float flTime)
@@ -367,6 +511,10 @@ bool CHudWaveMode::Draw(float flTime)
 		gHUD.m_Editor->GetPos(HUD_WAVE_COUNTER, x, y);
 		sprintf(buf, "WAVE %d", m_iWave);
 		gHUD.DrawHudString(x, y, ScreenWidth, buf, 255, 160, 0);
+
+		// sv_cheats was turned on during the run: it no longer counts for the high score
+		if (m_iRunCheated)
+			DrawLeft(x, y + 22, "CHEATS - NOT COUNTED", 255, 70, 60, 1.0f);
 	}
 
 	if (gHUD.m_Editor->Visible(HUD_WAVE_ENEMIES))

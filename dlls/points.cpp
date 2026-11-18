@@ -723,7 +723,7 @@ void Points_OnKill(CBaseEntity* pVictim, entvars_t* pevAttacker)
 	SendPoints(pPlayer, gained, mult, shown, shownCount, rank);
 
 	// wave grunts may drop rockets / grenades; more points = better odds
-	Wave_OnPlayerKill(pVictim, gained);
+	Wave_OnPlayerKill(pVictim, gained, pPlayer);
 
 	s.lastKillTime = now;
 	s.lastKillInflictor = pevInfl;

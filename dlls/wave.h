@@ -41,7 +41,7 @@ float Wave_DamageScale(struct entvars_s* pevAttacker);
 
 // called by the points system after a player's kill is scored: wave grunts may
 // drop grenades / rockets, with a chance that scales with the points of that kill
-void Wave_OnPlayerKill(CBaseEntity* pVictim, int pointsGained);
+void Wave_OnPlayerKill(CBaseEntity* pVictim, int pointsGained, CBasePlayer* pKiller);
 
 // client -> server, call from ClientCommand()
 void Wave_ClientReady(CBasePlayer* pPlayer);				// "ss_wave_ready"

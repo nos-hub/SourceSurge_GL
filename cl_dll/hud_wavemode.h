@@ -9,8 +9,8 @@
 // panel sizes, shared with the editor registration in hud.cpp
 #define WAVEHUD_LOBBY_W 480
 #define WAVEHUD_LOBBY_H 152
-#define WAVEHUD_STATS_W 360
-#define WAVEHUD_STATS_H 184
+#define WAVEHUD_STATS_W 420
+#define WAVEHUD_STATS_H 392 // maximum: the panel shrinks when there is no scoreboard
 #define WAVEHUD_RETRY_W 480
 #define WAVEHUD_RETRY_H 84
 
@@ -49,6 +49,7 @@ private:
 	int m_iMyReady;	 // this player pressed ready / retry
 	int m_iMyVote;	 // 0-3, or 255 = no vote
 	int m_iCheats;	 // lobby: sv_cheats is on, start is blocked
+	int m_iRunCheated; // sv_cheats was enabled during the run: no high score
 
 	float m_flStateStart; // client time the current state began (fades)
 
@@ -60,4 +61,23 @@ private:
 	int m_iStatsPoints;
 	int m_iStatsHigh;
 	int m_iStatsNewHigh;
+	int m_iStatsCheated;
+
+	int m_iStatsFastWave, m_iStatsFastSecs; // 0 secs = none
+	int m_iStatsSlowWave, m_iStatsSlowSecs;
+	int m_iStatsBestKill;
+	char m_szStatsBestKillName[32];
+	char m_szStatsFirstDown[32];
+	char m_szStatsLastStanding[32];
+
+	// scoreboard rows (best points first), filled by the WaveStats row messages
+	enum { STATS_MAX_ROWS = 8 };
+	int m_iStatsRows;
+	int m_iRowIndex[STATS_MAX_ROWS]; // entity index (own row is highlighted)
+	char m_szRowName[STATS_MAX_ROWS][32];
+	int m_iRowPoints[STATS_MAX_ROWS];
+	int m_iRowKills[STATS_MAX_ROWS];
+	int m_iRowDeaths[STATS_MAX_ROWS];
+	int m_iRowFlags[STATS_MAX_ROWS]; // 1 = top player, 2 = most kills
+	int m_iStatsExpectedRows;
 };
