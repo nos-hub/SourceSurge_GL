@@ -19,6 +19,7 @@
 #include "shake.h"
 #include "UserMessages.h"
 #include "edgebug.h"
+#include "duel1v1.h"
 
 void LinkUserMessages()
 {
@@ -73,6 +74,8 @@ void LinkUserMessages()
 	gmsgTechPts = REG_USER_MSG("TechPts", -1);
 	Edgebug_RegisterMessages(); // EdgeBug HUD message
 	gmsgMeleeCharges = REG_USER_MSG("MeleeKB", -1);
+
+	Duel1v1_LinkUserMessages();
 
 	gmsgSniperScope = REG_USER_MSG("SniperScope", 1);
 

@@ -393,6 +393,9 @@
     <ClCompile Include="..\..\dlls\jumpstats.cpp">
       <Filter>Source Files\dlls</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\dlls\duel1v1.cpp">
+      <Filter>Source Files\dlls</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\dlls\checkpoint.cpp">
       <Filter>Source Files\dlls</Filter>
     </ClCompile>
@@ -684,6 +687,9 @@
       <Filter>Header Files\dlls</Filter>
     </ClInclude>
     <ClInclude Include="..\..\dlls\jumpstats.h">
+      <Filter>Header Files\dlls</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\dlls\duel1v1.h">
       <Filter>Header Files\dlls</Filter>
     </ClInclude>
     <ClInclude Include="..\..\dlls\checkpoint.h">

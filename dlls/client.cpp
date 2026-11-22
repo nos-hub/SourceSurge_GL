@@ -39,6 +39,7 @@
 #include "soundent.h"
 #include "gamerules.h"
 #include "game.h"
+#include "duel1v1.h"
 #include "customentity.h"
 #include "weapons.h"
 #include "weaponinfo.h"
@@ -617,6 +618,10 @@ void ClientCommand(edict_t* pEntity)
 		if (player->IsObserver())
 			player->Observer_FindNextPlayer(atoi(CMD_ARGV(1)) != 0);
 	}
+	else if (Duel1v1_ClientCommand(player, pcmd))
+	{
+		// handled (1v1_ready, 1v1_set, 1v1_weapon, 1v1_preset, 1v1_stop, 1v1_cam, 1v1_respawn)
+	}
 	else if (g_pGameRules->ClientCommand(player, pcmd))
 	{
 		// MenuSelect returns true only if the command is properly handled,  so don't print a warning
@@ -949,6 +954,7 @@ static bool g_LastAllowBunnyHoppingState = false;
 void StartFrame()
 {
 	Wave_Think();
+	Duel1v1_Think();
 
 	if (g_pGameRules)
 		g_pGameRules->Think();
@@ -990,6 +996,8 @@ void StartFrame()
 
 void ClientPrecache()
 {
+	Duel1v1_Precache();
+
 	// setup precaches always needed
 	PRECACHE_SOUND("player/sprayer.wav"); // spray paint sound for PreAlpha
 
@@ -1274,6 +1282,10 @@ void SetupVisibility(edict_t* pViewEntity, edict_t* pClient, unsigned char** pvs
 	{
 		org = org + (VEC_HULL_MIN - VEC_DUCK_HULL_MIN);
 	}
+
+	Vector duelOrg;
+	if (Duel1v1_GetPVSOrigin(pClient, duelOrg))
+		org = duelOrg;
 
 	*pvs = ENGINE_SET_PVS((float*)&org);
 	*pas = ENGINE_SET_PAS((float*)&org);

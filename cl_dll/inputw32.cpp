@@ -446,6 +446,8 @@ void DLLEXPORT IN_MouseEvent(int mstate)
 {
 	int i;
 
+	gHUD.m_Duel1v1.MouseEvent(mstate);
+
 	if (iMouseInUse || g_iVisibleMouse)
 		return;
 

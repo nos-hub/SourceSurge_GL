@@ -333,6 +333,9 @@
     <ClCompile Include="..\..\cl_dll\hud_wavemode.cpp">
       <Filter>Source Files\cl_dll</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\cl_dll\hud_duel1v1.cpp">
+      <Filter>Source Files\cl_dll</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\cl_dll\hud_grapplecharge.cpp">
       <Filter>Source Files\cl_dll</Filter>
     </ClCompile>
@@ -642,6 +645,9 @@
       <Filter>Header Files\cl_dll</Filter>
     </ClInclude>
     <ClInclude Include="..\..\cl_dll\hud_wavemode.h">
+      <Filter>Header Files\cl_dll</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\cl_dll\hud_duel1v1.h">
       <Filter>Header Files\cl_dll</Filter>
     </ClInclude>
     <ClInclude Include="..\..\cl_dll\hud_grapplecharge.h">

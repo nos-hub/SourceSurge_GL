@@ -367,6 +367,9 @@ Return 1 to allow engine to process the key, otherwise, act on it as needed
 */
 int DLLEXPORT HUD_Key_Event(int down, int keynum, const char* pszCurrentBinding)
 {
+	if (!gHUD.m_Duel1v1.KeyEvent(down, keynum, pszCurrentBinding))
+		return 0;
+
 	if (gHUD.m_WaveMode.KeyEvent(down, keynum))
 		return 0;
 
@@ -784,6 +787,8 @@ void DLLEXPORT CL_CreateMove(float frametime, struct usercmd_s* cmd, int active)
 	{
 		VectorCopy(oldangles, cmd->viewangles);
 	}
+
+	gHUD.m_Duel1v1.CreateMove(frametime, cmd);
 }
 
 /*

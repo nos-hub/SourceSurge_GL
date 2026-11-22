@@ -391,6 +391,7 @@ void CHud::Init()
 	m_JumpStats.Init();
 	m_EdgeBug.Init();
 	m_HitFeedback.Init();
+	m_Duel1v1.Init();
 
 	BodyCam_Init();
 
@@ -490,6 +491,7 @@ void CHud::VidInit()
 	m_JumpStats.VidInit();
 	m_HitFeedback.VidInit();
 	m_EdgeBug.VidInit();
+	m_Duel1v1.VidInit();
 
 	m_scrinfo.iSize = sizeof(m_scrinfo);
 	GetScreenInfo(&m_scrinfo);

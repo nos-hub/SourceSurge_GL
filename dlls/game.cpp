@@ -21,6 +21,7 @@
 #include "wave.h"
 #include "jumpstats.h"
 #include "edgebug.h"
+#include "duel1v1.h"
 
 
 cvar_t displaysoundlist = {"displaysoundlist", "0"};
@@ -484,6 +485,7 @@ static bool SV_InitServer()
 // This gets called one time when the game is initialied
 void GameDLLInit()
 {
+	Duel1v1_Init();
 	// Register cvars here:
 	CVAR_REGISTER(&allweapons);
 	g_psv_gravity = CVAR_GET_POINTER("sv_gravity");

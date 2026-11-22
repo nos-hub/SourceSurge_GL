@@ -53,4 +53,5 @@ void DLLEXPORT HUD_DrawTransparentTriangles()
 		g_pParticleMan->Update();
 
 	gHUD.m_Photo.DrawDecals();
+	gHUD.m_Duel1v1.DrawWorld();
 }

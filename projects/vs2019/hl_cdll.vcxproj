@@ -154,6 +154,7 @@ xcopy /Y /Q "$(TargetPath)" "D:\.SourceSurge_gld\xash3d-fwgs-win32-i386\sourcesu
     <ClCompile Include="..\..\cl_dll\hud_spectator.cpp" />
     <ClCompile Include="..\..\cl_dll\hud_update.cpp" />
     <ClCompile Include="..\..\cl_dll\hud_wavemode.cpp" />
+    <ClCompile Include="..\..\cl_dll\hud_duel1v1.cpp" />
     <ClCompile Include="..\..\cl_dll\input.cpp" />
     <ClCompile Include="..\..\cl_dll\inputw32.cpp" />
     <ClCompile Include="..\..\cl_dll\interpolation.cpp" />
@@ -243,6 +244,7 @@ xcopy /Y /Q "$(TargetPath)" "D:\.SourceSurge_gld\xash3d-fwgs-win32-i386\sourcesu
     <ClInclude Include="..\..\cl_dll\hud_spectator.h" />
     <ClInclude Include="..\..\cl_dll\hud_speedometer.h" />
     <ClInclude Include="..\..\cl_dll\hud_wavemode.h" />
+    <ClInclude Include="..\..\cl_dll\hud_duel1v1.h" />
     <ClInclude Include="..\..\cl_dll\interpolation.h" />
     <ClInclude Include="..\..\cl_dll\in_defs.h" />
     <ClInclude Include="..\..\cl_dll\kbutton.h" />

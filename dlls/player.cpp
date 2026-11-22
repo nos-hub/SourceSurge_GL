@@ -46,6 +46,7 @@
 #include "health_on_kill.h"
 #include "edgebug.h"
 #include "jumpstats.h"
+#include "duel1v1.h"
 #include "photo.h"
 
 // #define DUCKFIX
@@ -831,6 +832,7 @@ void CBasePlayer::RemoveAllItems(bool removeSuit)
 
 void CBasePlayer::Killed(entvars_t* pevAttacker, int iGib)
 {
+	Duel1v1_PlayerKilled(this, pevAttacker);
 	Points_OnPlayerDeath(this, pevAttacker);
 	CSound* pSound;
 
@@ -1315,6 +1317,9 @@ void CBasePlayer::PlayerDeathThink()
 	if (pev->deadflag == DEAD_DEAD)
 	{
 		if (fAnyButtonDown)
+			return;
+
+		if (Duel1v1_IsChoosing(this))
 			return;
 
 		if (g_pGameRules->FPlayerCanRespawn(this))
@@ -3420,6 +3425,9 @@ static edict_t* GiveNamedItem_Common(entvars_t* pev, const char* pszName)
 
 void CBasePlayer::GiveNamedItem(const char* szName)
 {
+	if (!Duel1v1_PlayerMayHave(this, szName))
+		return;
+
 	auto pent = GiveNamedItem_Common(pev, szName);
 
 	if (!pent)
@@ -3432,6 +3440,9 @@ void CBasePlayer::GiveNamedItem(const char* szName)
 
 void CBasePlayer::GiveNamedItem(const char* szName, int defaultAmmo)
 {
+	if (!Duel1v1_PlayerMayHave(this, szName))
+		return;
+
 	auto pent = GiveNamedItem_Common(pev, szName);
 
 	if (!pent)
@@ -3793,6 +3804,13 @@ void CBasePlayer::CheatImpulseCommands(int iImpulse)
 //
 bool CBasePlayer::AddPlayerItem(CBasePlayerItem* pItem)
 {
+	if (!Duel1v1_PlayerMayHave(this, STRING(pItem->pev->classname)))
+	{
+		if (pItem->pev->spawnflags & SF_NORESPAWN)
+			UTIL_Remove(pItem); // never leave a refused, given item lying on the player
+		return false;
+	}
+
 	CBasePlayerItem* pInsert;
 
 	pInsert = m_rgpPlayerItems[pItem->iItemSlot()];

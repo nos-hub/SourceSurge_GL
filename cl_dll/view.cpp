@@ -1639,6 +1639,9 @@ void V_CalcSpectatorRefdef(struct ref_params_s* pparams)
 
 void DLLEXPORT V_CalcRefdef(struct ref_params_s* pparams)
 {
+	if (gHUD.m_Duel1v1.CalcRefdef(pparams))
+		return;
+
 	//	RecClCalcRefdef(pparams);
 	gHUD.m_vecPlayerVelocity = pparams->simvel;
 	// intermission / finale rendering

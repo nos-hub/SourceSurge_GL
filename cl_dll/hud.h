@@ -497,6 +497,7 @@ private:
 #include "hud_jumpstats.h"
 #include "hud_edgebug.h"
 #include "hud_hitfeedback.h"
+#include "hud_duel1v1.h"
 
 class CHud
 {
@@ -603,6 +604,7 @@ public:
 	CHudJumpStats m_JumpStats;
 	CHudEdgeBug m_EdgeBug;
 	CHudHitFeedback m_HitFeedback;
+	CHudDuel1v1 m_Duel1v1;
 
 	void Init();
 	void VidInit();

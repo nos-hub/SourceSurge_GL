@@ -122,6 +122,7 @@ xcopy /Y /Q "$(TargetDir)hl.pdb" "D:\.SourceSurge_gld\xash3d-fwgs-win32-i386\sou
     <ClCompile Include="..\..\dlls\health_on_kill.cpp" />
     <ClCompile Include="..\..\dlls\hitfeedback.cpp" />
     <ClCompile Include="..\..\dlls\jumpstats.cpp" />
+    <ClCompile Include="..\..\dlls\duel1v1.cpp" />
     <ClCompile Include="..\..\dlls\melee_kb.cpp" />
     <ClCompile Include="..\..\dlls\movement_tech.cpp" />
     <ClCompile Include="..\..\dlls\points.cpp" />
@@ -294,6 +295,7 @@ xcopy /Y /Q "$(TargetDir)hl.pdb" "D:\.SourceSurge_gld\xash3d-fwgs-win32-i386\sou
     <ClInclude Include="..\..\dlls\hornet.h" />
     <ClInclude Include="..\..\dlls\items.h" />
     <ClInclude Include="..\..\dlls\jumpstats.h" />
+    <ClInclude Include="..\..\dlls\duel1v1.h" />
     <ClInclude Include="..\..\dlls\melee_kb.h" />
     <ClInclude Include="..\..\dlls\monsterevent.h" />
     <ClInclude Include="..\..\dlls\monsters.h" />
