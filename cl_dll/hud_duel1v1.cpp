@@ -155,6 +155,9 @@ bool CHudDuel1v1::VidInit(void)
 // -------------------------------------------------------------- messages ---
 bool CHudDuel1v1::MsgFunc_DuelState(const char *pszName, int iSize, void *pbuf)
 {
+	const bool wasActive = IsActive();
+	const int  prevState = m_state;
+
 	BEGIN_READ(pbuf, iSize);
 	m_state     = READ_BYTE();
 	m_myScore   = READ_BYTE();
@@ -174,6 +177,15 @@ bool CHudDuel1v1::MsgFunc_DuelState(const char *pszName, int iSize, void *pbuf)
 	m_respTenths = READ_SHORT();
 
 	m_lastMsg = gEngfuncs.GetClientTime();
+
+	// Auto menu: lobby -> open for both duelists, countdown -> close so nobody keeps a free cursor in the match.
+	if (m_state != prevState || !wasActive)
+	{
+		if (m_state == DUEL_WAITING && (m_flags & 8))
+			m_menu = true;
+		else if (m_state == DUEL_COUNTDOWN)
+			m_menu = false;
+	}
 
 	const bool ch = (m_flags & 4) != 0 && m_state == DUEL_LIVE;
 	if (ch && !m_wasChoosing)
@@ -799,7 +811,12 @@ void CHudDuel1v1::DrawMenu(void)
 		PutText(px + 16, fy - 26, 1.0f, 0.7f, 0.4f, "1v1 mode is OFF - enable it in the Match tab");
 
 	if (m_state == DUEL_WAITING && (m_flags & 8))
+	{
 		Button(px + 16, fy, 200, 26, (m_flags & 1) ? "READY (click to cancel)" : "READY", A_READY, 0, true, (m_flags & 1) != 0);
+		const bool me = (m_flags & 1) != 0, en = (m_flags & 2) != 0;
+		PutText(px + 230, fy + 1,  me ? 0.4f : 0.8f, me ? 1.0f : 0.8f, me ? 0.4f : 0.8f, me ? "You: READY"        : "You: not ready");
+		PutText(px + 230, fy + 15, en ? 0.4f : 0.8f, en ? 1.0f : 0.8f, en ? 0.4f : 0.8f, en ? "Enemy: READY"      : "Enemy: not ready");
+	}
 	if (host && (m_state == DUEL_LIVE || m_state == DUEL_COUNTDOWN))
 		Button(px + pw - 156, fy, 140, 26, "STOP MATCH", A_STOP, 0, true, false);
 }

@@ -78,10 +78,15 @@ typedef struct
 
 static const Duel1v1Weapon g_Duel1v1Weapons[] =
 {
-	{ "weapon_crowbar", "Melee"   },
-	{ "weapon_sniper",  "Sniper"  },
-	{ "weapon_grapple", "Grapple" },
-	{ "weapon_camera",  "Camera"  },
+	{ "weapon_crowbar",    "Melee"           },
+	{ "weapon_sniper",     "Sniper"          },
+	{ "weapon_grapple",    "Grapple"         },
+	{ "weapon_camera",     "Camera"          },
+	{ "weapon_9mmhandgun", "9mm"             },
+	{ "weapon_357",        "Python"          },
+	{ "weapon_shotgun",    "Shotgun"         },
+	{ "weapon_9mmAR",      "AR"              },
+	{ "weapon_rpg",        "Rocket launcher" },
 };
 #define DUEL_NUM_WEAPONS ((int)(sizeof(g_Duel1v1Weapons) / sizeof(g_Duel1v1Weapons[0])))
 #define DUEL_DEFAULT_WEAPONS "weapon_crowbar,weapon_sniper,weapon_grapple"
